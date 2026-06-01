@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @page {
+        size: A4;
+        margin: 18mm 16mm;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+        color: #20445f;
+        line-height: 1.55;
+        font-size: 11pt;
+        margin: 0;
+      }
+      h1 {
+        font-size: 26pt;
+        margin: 0 0 2px;
+        color: #1b3a52;
+      }
+      .subtitle {
+        font-size: 12pt;
+        color: #5a7e98;
+        margin: 0 0 4px;
+      }
+      .meta {
+        font-size: 9.5pt;
+        color: #8aa6bb;
+        margin-bottom: 18px;
+      }
+      h2 {
+        font-size: 15pt;
+        color: #1b3a52;
+        border-bottom: 2px solid #d7e7f1;
+        padding-bottom: 4px;
+        margin: 26px 0 10px;
+      }
+      h3 {
+        font-size: 11.5pt;
+        color: #2d6285;
+        margin: 14px 0 4px;
+      }
+      p {
+        margin: 6px 0;
+      }
+      ul {
+        margin: 6px 0;
+        padding-left: 20px;
+      }
+      li {
+        margin: 3px 0;
+      }
+      .hero {
+        background: linear-gradient(135deg, #add8f0, #cde9f7);
+        border-radius: 14px;
+        padding: 22px 24px;
+        margin-bottom: 8px;
+      }
+      .cards {
+        display: flex;
+        gap: 10px;
+        margin: 12px 0;
+      }
+      .card {
+        flex: 1;
+        background: #f3f9fc;
+        border: 1px solid #d7e7f1;
+        border-radius: 10px;
+        padding: 12px 14px;
+        text-align: center;
+      }
+      .card .num {
+        font-size: 20pt;
+        font-weight: 700;
+        color: #e8853c;
+        display: block;
+      }
+      .card .lbl {
+        font-size: 9pt;
+        color: #5a7e98;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10pt;
+        margin: 8px 0;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 7px 10px;
+        border-bottom: 1px solid #e3eef5;
+        vertical-align: top;
+      }
+      th {
+        background: #eef6fb;
+        color: #2d6285;
+      }
+      .tag {
+        display: inline-block;
+        background: #e8853c;
+        color: #fff;
+        border-radius: 20px;
+        padding: 1px 10px;
+        font-size: 8.5pt;
+        font-weight: 600;
+      }
+      .tag.soft {
+        background: #6fa8cc;
+      }
+      .callout {
+        background: #fff7ef;
+        border-left: 4px solid #e8853c;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 12px 0;
+        font-size: 10pt;
+      }
+      .pagebreak {
+        page-break-before: always;
+      }
+      .muted {
+        color: #7c98ac;
+        font-size: 9.5pt;
+      }
+      footer {
+        margin-top: 28px;
+        border-top: 1px solid #d7e7f1;
+        padding-top: 8px;
+        font-size: 8.5pt;
+        color: #8aa6bb;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <h1>🍓 Kadow Crush</h1>
+      <p class="subtitle">
+        A lightweight match-3 puzzle game — built fresh for the web
+      </p>
+    </div>
+    <p class="meta">Project summary &amp; implementation report — June 2026</p>
+
+    <h2>What it is</h2>
+    <p>
+      Kadow Crush is a <strong>match-3 puzzle game</strong> in the same family as
+      Candy Crush. The player swaps neighbouring fruit tiles to line up three or
+      more of a kind; matched fruit bursts off the board, the tiles above tumble
+      down to fill the gaps, and fresh fruit drops in from the top. Chains of
+      lucky drops can trigger satisfying combos.
+    </p>
+    <p>
+      It is a <strong>fresh, deliberately lightweight rebuild</strong> of our
+      existing Unity-based Kadow Crush. The goal was a fast-loading, mobile-first
+      version that keeps the core fun while shedding the weight and complexity of
+      the full product.
+    </p>
+
+    <h2>How a round plays</h2>
+    <ul>
+      <li>
+        <strong>The board:</strong> a grid of fruit tiles (8 rows × 7 columns),
+        with five fruits — strawberry, blueberry, green apple, lemon, grapes.
+      </li>
+      <li>
+        <strong>The goal:</strong> collect a target number of two chosen fruits
+        (currently 25 of each) before running out of moves.
+      </li>
+      <li>
+        <strong>The limit:</strong> 20 moves. A move is one swap; the chain
+        reaction it sets off is free.
+      </li>
+      <li>
+        <strong>Winning &amp; losing:</strong> meet both fruit goals in time to
+        win; run out of moves first and the round is lost. Either way, a
+        “Play Again” button starts a brand-new randomly generated board.
+      </li>
+    </ul>
+
+    <h3>Special tiles</h3>
+    <p>
+      Bigger matches create power-ups, adding a layer of strategy beyond simple
+      threes:
+    </p>
+    <table>
+      <tr>
+        <th>You match…</th>
+        <th>You get…</th>
+        <th>It does…</th>
+      </tr>
+      <tr>
+        <td>4 in a row</td>
+        <td>a Striped tile</td>
+        <td>clears an entire row or column when activated</td>
+      </tr>
+      <tr>
+        <td>5 in a row</td>
+        <td>a Colour Bomb</td>
+        <td>clears every tile of one fruit from the whole board</td>
+      </tr>
+    </table>
+
+    <h2>The experience</h2>
+    <ul>
+      <li>
+        <strong>Mobile-first:</strong> designed for phones in portrait, scales
+        crisply to any screen size and pixel density.
+      </li>
+      <li>
+        <strong>Two ways to play:</strong> swipe a tile in a direction, or tap
+        one then tap its neighbour — whichever feels natural.
+      </li>
+      <li>
+        <strong>Juice:</strong> tiles pop and bounce, fruit shatters into
+        coloured particles, and every action has a sound — all generated in the
+        browser, no media files to download.
+      </li>
+      <li>
+        <strong>Always fair:</strong> the board never starts already-solved or
+        in a dead end, and it quietly reshuffles itself if no moves remain.
+      </li>
+    </ul>
+
+    <h2>By the numbers</h2>
+    <div class="cards">
+      <div class="card">
+        <span class="num">~77 KB</span>
+        <span class="lbl">Download size (compressed)</span>
+      </div>
+      <div class="card">
+        <span class="num">0</span>
+        <span class="lbl">External media files</span>
+      </div>
+      <div class="card">
+        <span class="num">&lt; 0.5 s</span>
+        <span class="lbl">Build time</span>
+      </div>
+    </div>
+    <p class="muted">
+      The entire game downloads in about 77 KB — roughly the size of a single
+      small photo. There are no separate image or audio files to fetch: the fruit
+      icons are standard emoji, the artwork is drawn by code, and the sound
+      effects are synthesised live. That means near-instant loading, even on a
+      weak mobile connection, and nothing to host or manage besides one small
+      file.
+    </p>
+
+    <div class="pagebreak"></div>
+
+    <h2>How it was built (in plain terms)</h2>
+    <p>
+      The game is split cleanly into two halves, which is the key reason it is
+      reliable and easy to extend:
+    </p>
+    <ul>
+      <li>
+        <strong>The “rules brain”</strong> — knows everything about matching,
+        scoring, the chain reactions and fairness checks, but knows nothing about
+        how things look. Because it is self-contained, it can be tested
+        automatically and trusted.
+      </li>
+      <li>
+        <strong>The “presentation layer”</strong> — takes a play-by-play
+        description of what the rules brain decided and animates it on screen
+        with the sounds and effects. It never second-guesses the rules.
+      </li>
+    </ul>
+    <div class="callout">
+      <strong>Why this matters to the business:</strong> new fruit, new goals,
+      new power-ups or visual themes can be added without risking the core game
+      logic — and the logic is covered by automated tests, so changes are safe to
+      ship.
+    </div>
+
+    <h3>Built to be re-skinned</h3>
+    <p>
+      Colours, fruit, labels and the background all live in one place, ready to
+      be driven by a configuration file — mirroring how the existing Unity
+      product is themed per campaign. A future pass can expose these as
+      brand-customisable settings without touching the game itself.
+    </p>
+
+    <table>
+      <tr>
+        <th>Aspect</th>
+        <th>Status</th>
+        <th>Notes</th>
+      </tr>
+      <tr>
+        <td>Core match-3 gameplay</td>
+        <td><span class="tag">Done</span></td>
+        <td>Matching, cascades, gravity, refill</td>
+      </tr>
+      <tr>
+        <td>Special tiles</td>
+        <td><span class="tag">Done</span></td>
+        <td>Striped + Colour Bomb</td>
+      </tr>
+      <tr>
+        <td>Goals, moves, win/lose</td>
+        <td><span class="tag">Done</span></td>
+        <td>Collect-two-fruits objective</td>
+      </tr>
+      <tr>
+        <td>Mobile UI, sound, particles</td>
+        <td><span class="tag">Done</span></td>
+        <td>Light, candy-style look</td>
+      </tr>
+      <tr>
+        <td>Brand theming via config</td>
+        <td><span class="tag soft">Next</span></td>
+        <td>Hooks in place, not yet exposed</td>
+      </tr>
+    </table>
+
+    <h2>Where it could go next</h2>
+    <p>
+      The current build is one self-contained level. The structure was chosen so
+      that the following can be layered on without a rewrite:
+    </p>
+
+    <h3>Quick wins (small effort)</h3>
+    <ul>
+      <li>
+        <strong>Score &amp; combo points</strong> — reward big cascades, show a
+        running score and a “nice combo!” flourish.
+      </li>
+      <li>
+        <strong>More power-ups</strong> — a wrapped/bomb tile from L-shaped
+        matches; letting two power-ups combine for a bigger blast.
+      </li>
+      <li>
+        <strong>Goal variety</strong> — “reach a score”, “clear in under N
+        seconds”, or single-fruit goals, instead of only collect-two.
+      </li>
+      <li>
+        <strong>Polish</strong> — a start screen, a countdown, screen shake on
+        big clears, a “moves running low” warning.
+      </li>
+    </ul>
+
+    <h3>Medium additions (more design work)</h3>
+    <ul>
+      <li>
+        <strong>Multiple levels &amp; a map</strong> — a sequence of hand-tuned
+        or generated levels with rising difficulty, progress saved on the device.
+      </li>
+      <li>
+        <strong>Obstacles &amp; blockers</strong> — locked tiles, ice, jelly to
+        clear, crates — the staples that keep match-3 fresh for hundreds of
+        levels.
+      </li>
+      <li>
+        <strong>Boosters &amp; pre-game power-ups</strong> — items the player can
+        spend to swing a tough board, a natural hook for monetisation or rewards.
+      </li>
+      <li>
+        <strong>Daily challenge / leaderboard</strong> — one shared random board
+        per day, with scores compared between players.
+      </li>
+    </ul>
+
+    <h3>Bigger bets (strategic)</h3>
+    <ul>
+      <li>
+        <strong>Full brand-skinning pipeline</strong> — campaign-specific fruit,
+        backgrounds, goals and copy driven entirely by configuration, matching
+        the existing Unity product’s flexibility at a fraction of the weight.
+      </li>
+      <li>
+        <strong>Live events &amp; seasons</strong> — limited-time themed boards,
+        rewards and goals.
+      </li>
+      <li>
+        <strong>Lightweight multiplayer</strong> — head-to-head “same board,
+        highest score” races.
+      </li>
+    </ul>
+
+    <div class="callout">
+      <strong>Bottom line:</strong> a working, good-looking, near-instant-loading
+      match-3 game is ready to demo today, built on a foundation designed to grow
+      into the features above without starting over.
+    </div>
+
+    <footer>
+      Kadow Crush — lightweight web rebuild · Match-3 engine + mobile UI ·
+      ~77 KB compressed, zero external assets · Report generated June 2026.
+    </footer>
+  </body>
+</html>

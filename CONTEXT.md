@@ -74,7 +74,7 @@ The menu screen listing the Challenges. The player picks one to play and returns
 A beginner-oriented screen shown after a Challenge is picked and before it starts. It explains the universal controls (swap two adjacent Candies; line up 3+ to clear) and the Challenge's own goal and win condition, then a Play button begins the level. Per-Challenge wording lives in the Challenge definition.
 
 ### Music
-Looping background music, separate from the procedural sound effects. A small chip on the level-select menu cycles between a few Creative Commons tracks (and Off); the choice persists in `localStorage` and the selected track loops across both the menu and play screens. Tracks are Kevin MacLeod (incompetech.com), CC BY 3.0 — credited in `public/music/ATTRIBUTION.md`.
+Looping background music, separate from the procedural sound effects. A small chip on the level-select menu cycles between a few royalty-free game-music tracks (and Off); the choice persists in `localStorage` and the selected track loops across both the menu and play screens. Tracks are CC-BY (Eric Matyas, soundimage.org) and CC0 — credited in `public/music/ATTRIBUTION.md`.
 
 ### Objective (typed)
 The Objective generalises beyond colour-collection. Each Challenge has exactly one of:

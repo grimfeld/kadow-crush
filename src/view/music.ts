@@ -16,10 +16,10 @@ export interface Track {
 }
 
 export const TRACKS: Track[] = [
-  { id: "monkeys", label: "Monkeys", file: "/music/monkeys-spinning-monkeys.ogg" },
-  { id: "sneaky", label: "Sneaky", file: "/music/sneaky-snitch.ogg" },
-  { id: "carefree", label: "Carefree", file: "/music/carefree.ogg" },
-  { id: "duck", label: "Duck", file: "/music/fluffing-a-duck.ogg" },
+  { id: "puzzler", label: "Puzzler", file: "/music/arcade-puzzler.ogg" },
+  { id: "funky", label: "Funky", file: "/music/funky-chiptune.ogg" },
+  { id: "balloons", label: "Balloons", file: "/music/balloons-forever.ogg" },
+  { id: "adventure", label: "Adventure", file: "/music/happy-adventure.mp3" },
 ];
 
 const STORAGE_KEY = "kadow.music";

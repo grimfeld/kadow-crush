@@ -1,5 +1,4 @@
 import kaplay from "kaplay";
-import { entropySeed } from "./core/rng.ts";
 import { GameView } from "./view/gameView.ts";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -16,7 +15,8 @@ const k = kaplay({
   debug: false,
 });
 
-const view = new GameView(k, entropySeed());
+// Opens on the level-select menu; picking a challenge starts a seeded game.
+const view = new GameView(k);
 
 // Dev-only: expose the view so the browser smoke test can plan a legal move.
 if (import.meta.env.DEV) {
@@ -36,4 +36,6 @@ k.onUpdate(() => {
     lastH = k.height();
     view.onResize();
   }
+  // Advance the level clock (timed challenges); no-op otherwise.
+  view.tick(k.dt());
 });

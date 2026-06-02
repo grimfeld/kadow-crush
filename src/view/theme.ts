@@ -11,13 +11,15 @@ export interface ColourTheme {
   emoji: string;
 }
 
-// Index matches Colour 0..4. Pastel tints in the legacy style.
+// Index matches Colour 0..5. Pastel tints in the legacy style. The 6th colour
+// is only in play for Challenges that set colourCount: 6 (ADR-0002).
 export const COLOUR_THEMES: ColourTheme[] = [
   { fill: [255, 209, 220], emoji: "🍓" }, // red    — soft pink
   { fill: [191, 224, 255], emoji: "🫐" }, // blue   — soft blue
   { fill: [200, 240, 200], emoji: "🍏" }, // green  — soft green
   { fill: [255, 240, 179], emoji: "🍋" }, // yellow — soft lemon
   { fill: [226, 204, 244], emoji: "🍇" }, // purple — soft lavender
+  { fill: [255, 224, 192], emoji: "🍊" }, // orange — soft peach
 ];
 
 // Saturated colours for clear-burst particles (the pale tile tints read too
@@ -28,6 +30,7 @@ export const BURST_COLOURS: [number, number, number][] = [
   [46, 184, 113], // green
   [240, 190, 30], // yellow
   [150, 89, 200], // purple
+  [240, 140, 50], // orange
 ];
 
 // Light, sky-ish background (top → bottom gradient).

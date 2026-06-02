@@ -1,7 +1,9 @@
 // Pure match-3 logic core. No rendering. See CONTEXT.md for the domain and
-// ADR-0001 for the core/view split and the Step contract.
+// ADR-0001 for the core/view split and the Step contract. Board dimensions and
+// colour count come from the ChallengeConfig (ADR-0002) — there are no global
+// board constants any more.
 
-import { COLS, COLOUR_COUNT, ROWS } from "./config.ts";
+import { DEFAULT_CHALLENGE, type ChallengeConfig } from "./config.ts";
 import type { Rng } from "./rng.ts";
 import type {
   Candy,
@@ -17,9 +19,6 @@ const samePos = (a: Pos, b: Pos) => a.row === b.row && a.col === b.col;
 const adjacent = (a: Pos, b: Pos) =>
   Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
 
-const inBounds = (row: number, col: number) =>
-  row >= 0 && row < ROWS && col >= 0 && col < COLS;
-
 /** A run of matched same-colour candies on one line. */
 interface Run {
   cells: Pos[];
@@ -28,10 +27,23 @@ interface Run {
 
 export class Board {
   grid: Grid;
+  readonly rows: number;
+  readonly cols: number;
+  readonly colourCount: number;
   private nextId = 1;
 
-  constructor(private rng: Rng) {
+  constructor(
+    private rng: Rng,
+    cfg: ChallengeConfig = DEFAULT_CHALLENGE,
+  ) {
+    this.rows = cfg.rows;
+    this.cols = cfg.cols;
+    this.colourCount = cfg.colourCount;
     this.grid = this.generateSolvableGrid();
+  }
+
+  private inBounds(row: number, col: number): boolean {
+    return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
   }
 
   // ---- generation ---------------------------------------------------------
@@ -50,11 +62,11 @@ export class Board {
 
   /** Greedy fill that never completes a line of 3 as it places candies. */
   private fillNoMatches(): Grid {
-    const grid: Grid = Array.from({ length: ROWS }, () =>
-      Array<Candy | null>(COLS).fill(null),
+    const grid: Grid = Array.from({ length: this.rows }, () =>
+      Array<Candy | null>(this.cols).fill(null),
     );
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
         const banned = new Set<Colour>();
         if (c >= 2 && grid[r][c - 1]!.colour === grid[r][c - 2]!.colour) {
           banned.add(grid[r][c - 1]!.colour!);
@@ -63,7 +75,8 @@ export class Board {
           banned.add(grid[r - 1][c]!.colour!);
         }
         const choices: Colour[] = [];
-        for (let k = 0; k < COLOUR_COUNT; k++) if (!banned.has(k)) choices.push(k);
+        for (let k = 0; k < this.colourCount; k++)
+          if (!banned.has(k)) choices.push(k);
         grid[r][c] = this.newCandy(this.rng.pick(choices));
       }
     }
@@ -82,12 +95,16 @@ export class Board {
   private findRuns(grid: Grid): Run[] {
     const runs: Run[] = [];
     // horizontal
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < this.rows; r++) {
       let c = 0;
-      while (c < COLS) {
+      while (c < this.cols) {
         const col = this.colourAt(grid, r, c);
         let len = 1;
-        while (col !== null && c + len < COLS && this.colourAt(grid, r, c + len) === col)
+        while (
+          col !== null &&
+          c + len < this.cols &&
+          this.colourAt(grid, r, c + len) === col
+        )
           len++;
         if (col !== null && len >= 3) {
           runs.push({
@@ -99,12 +116,16 @@ export class Board {
       }
     }
     // vertical
-    for (let c = 0; c < COLS; c++) {
+    for (let c = 0; c < this.cols; c++) {
       let r = 0;
-      while (r < ROWS) {
+      while (r < this.rows) {
         const col = this.colourAt(grid, r, c);
         let len = 1;
-        while (col !== null && r + len < ROWS && this.colourAt(grid, r + len, c) === col)
+        while (
+          col !== null &&
+          r + len < this.rows &&
+          this.colourAt(grid, r + len, c) === col
+        )
           len++;
         if (col !== null && len >= 3) {
           runs.push({
@@ -129,8 +150,8 @@ export class Board {
   }
 
   private hasLegalMoveOn(grid: Grid): boolean {
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
         // try swap right and down only (covers all adjacent pairs once)
         for (const [dr, dc] of [
           [0, 1],
@@ -138,7 +159,7 @@ export class Board {
         ]) {
           const nr = r + dr;
           const nc = c + dc;
-          if (!inBounds(nr, nc)) continue;
+          if (!this.inBounds(nr, nc)) continue;
           this.swapCells(grid, r, c, nr, nc);
           const legal =
             this.isSpecialSwap(grid, { row: r, col: c }, { row: nr, col: nc }) ||
@@ -229,9 +250,9 @@ export class Board {
   private specialCells(origin: Pos, special: SpecialType, partner: Pos): Pos[] {
     const cells: Pos[] = [];
     if (special === "striped-row") {
-      for (let c = 0; c < COLS; c++) cells.push({ row: origin.row, col: c });
+      for (let c = 0; c < this.cols; c++) cells.push({ row: origin.row, col: c });
     } else if (special === "striped-col") {
-      for (let r = 0; r < ROWS; r++) cells.push({ row: r, col: origin.col });
+      for (let r = 0; r < this.rows; r++) cells.push({ row: r, col: origin.col });
     } else {
       // color-bomb: clear all of the partner candy's colour (or partner itself
       // if it is also a bomb, just clear the two specials).
@@ -240,8 +261,8 @@ export class Board {
       if (target === null) {
         cells.push(partner);
       } else {
-        for (let r = 0; r < ROWS; r++)
-          for (let c = 0; c < COLS; c++)
+        for (let r = 0; r < this.rows; r++)
+          for (let c = 0; c < this.cols; c++)
             if (this.grid[r][c]?.colour === target) cells.push({ row: r, col: c });
       }
     }
@@ -323,8 +344,8 @@ export class Board {
   }
 
   private hasHoles(): boolean {
-    for (let r = 0; r < ROWS; r++)
-      for (let c = 0; c < COLS; c++) if (this.grid[r][c] === null) return true;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) if (this.grid[r][c] === null) return true;
     return false;
   }
 
@@ -357,9 +378,9 @@ export class Board {
   /** Drop candies into empty cells below them. Appends a fall Step. */
   private applyGravity(steps: Step[]) {
     const moves: { id: number; from: Pos; to: Pos }[] = [];
-    for (let c = 0; c < COLS; c++) {
-      let write = ROWS - 1;
-      for (let r = ROWS - 1; r >= 0; r--) {
+    for (let c = 0; c < this.cols; c++) {
+      let write = this.rows - 1;
+      for (let r = this.rows - 1; r >= 0; r--) {
         const candy = this.grid[r][c];
         if (!candy) continue;
         if (write !== r) {
@@ -376,10 +397,10 @@ export class Board {
   /** Fill empty top cells with new random candies. Appends a spawn Step. */
   private spawnNew(steps: Step[]) {
     const spawns: { id: number; colour: Colour; at: Pos }[] = [];
-    for (let c = 0; c < COLS; c++) {
-      for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < this.cols; c++) {
+      for (let r = 0; r < this.rows; r++) {
         if (this.grid[r][c] !== null) continue;
-        const colour = this.rng.int(COLOUR_COUNT);
+        const colour = this.rng.int(this.colourCount);
         const candy = this.newCandy(colour);
         this.grid[r][c] = candy;
         spawns.push({ id: candy.id, colour, at: { row: r, col: c } });
@@ -393,8 +414,9 @@ export class Board {
   /** Rearrange into a solvable, match-free layout. Returns a reshuffle Step. */
   reshuffle(): Step {
     const candies: Candy[] = [];
-    for (let r = 0; r < ROWS; r++)
-      for (let c = 0; c < COLS; c++) if (this.grid[r][c]) candies.push(this.grid[r][c]!);
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++)
+        if (this.grid[r][c]) candies.push(this.grid[r][c]!);
 
     for (;;) {
       // Fisher–Yates with the seeded rng.
@@ -402,11 +424,12 @@ export class Board {
         const j = this.rng.int(i + 1);
         [candies[i], candies[j]] = [candies[j], candies[i]];
       }
-      const grid: Grid = Array.from({ length: ROWS }, () =>
-        Array<Candy | null>(COLS).fill(null),
+      const grid: Grid = Array.from({ length: this.rows }, () =>
+        Array<Candy | null>(this.cols).fill(null),
       );
       let k = 0;
-      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) grid[r][c] = candies[k++];
+      for (let r = 0; r < this.rows; r++)
+        for (let c = 0; c < this.cols; c++) grid[r][c] = candies[k++];
       if (!this.hasAnyMatch(grid) && this.hasLegalMoveOn(grid)) {
         this.grid = grid;
         return { kind: "reshuffle", layout: grid.map((row) => row.slice()) };

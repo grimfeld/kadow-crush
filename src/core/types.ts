@@ -44,4 +44,17 @@ export interface Objective {
   collected: Map<Colour, number>;
 }
 
+/**
+ * A Challenge's win goal, as a definition. The runtime progress for each kind
+ * lives on the Game (colour tallies, score, jelly-remaining, ingredients).
+ * See docs/adr/0002-challenge-grids.md.
+ */
+export type ObjectiveSpec =
+  | { kind: "collect-colours"; targetCount: number; quota: number }
+  | { kind: "score"; target: number }
+  | { kind: "clear-jelly" }
+  | { kind: "collect-ingredients"; count: number };
+
+export type ObjectiveKind = ObjectiveSpec["kind"];
+
 export type Outcome = "playing" | "won" | "lost";

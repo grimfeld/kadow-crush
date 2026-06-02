@@ -56,6 +56,7 @@ export function objectiveSummary(cfg: ChallengeConfig): string {
 
 export class MenuScreen {
   private cards: CardRect[] = [];
+  private musicRect = { x: 0, y: 0, w: 0, h: 0 };
 
   constructor(private k: KAPLAYCtx) {}
 
@@ -69,7 +70,14 @@ export class MenuScreen {
     return null;
   }
 
-  draw() {
+  /** Whether (px,py) hits the music chip (caller advances the track). */
+  hitMusic(px: number, py: number): boolean {
+    const r = this.musicRect;
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+
+  /** @param musicLabel current music selection label ("Off" or a track name). */
+  draw(musicLabel: string) {
     const k = this.k;
     const W = k.width();
     const H = k.height();
@@ -103,6 +111,9 @@ export class MenuScreen {
       anchor: "center",
     });
 
+    // Music chip (top-right) — tap to cycle tracks / off.
+    this.drawMusicChip(musicLabel, W, H, dark, accent);
+
     // 2-column grid of cards.
     const top = titleY + Math.min(64, H * 0.11);
     const sideX = W * 0.05;
@@ -122,6 +133,47 @@ export class MenuScreen {
       const y = top + row * (cardH + rowGap);
       this.cards.push({ x, y, w: cardW, h: cardH, cfg });
       this.drawCard(cfg, x, y, cardW, cardH, dark, accent);
+    });
+  }
+
+  private drawMusicChip(
+    label: string,
+    W: number,
+    H: number,
+    dark: ReturnType<KAPLAYCtx["rgb"]>,
+    accent: ReturnType<KAPLAYCtx["rgb"]>,
+  ) {
+    const k = this.k;
+    const off = label === "Off";
+    const h = Math.max(30, Math.min(40, H * 0.05));
+    const text = `♪ ${label}`;
+    const size = h * 0.42;
+    // width fits the text with padding, clamped so it never crowds the title
+    const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
+    const w = Math.min(W * 0.42, m.width + h * 1.0);
+    const x = W - w - W * 0.05;
+    const y = Math.max(8, H * 0.018);
+    this.musicRect = { x, y, w, h };
+    k.drawRect({
+      pos: k.vec2(x, y),
+      width: w,
+      height: h,
+      radius: h / 2,
+      color: off
+        ? k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2])
+        : accent,
+      opacity: off ? 0.7 : 1,
+      outline: {
+        width: 2,
+        color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]),
+      },
+    });
+    k.drawText({
+      text,
+      pos: k.vec2(x + w / 2, y + h / 2),
+      size,
+      color: off ? dark : k.rgb(255, 255, 255),
+      anchor: "center",
     });
   }
 

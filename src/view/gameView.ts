@@ -8,6 +8,7 @@ import { Game } from "../core/game.ts";
 import type { Candy, Colour, Pos, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
 import { MenuScreen } from "./menu.ts";
+import { MusicPlayer } from "./music.ts";
 import { TutorialScreen } from "./tutorial.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import { emojiText } from "./text.ts";
@@ -82,6 +83,7 @@ export class GameView {
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
   private particles: Particles;
+  private music = new MusicPlayer();
   private prevOutcome: "playing" | "won" | "lost" = "playing";
   // Seconds to linger on the final board before the end overlay appears, so the
   // last clears/falls are visible. Counts down from END_OVERLAY_DELAY once the
@@ -536,8 +538,16 @@ export class GameView {
     const k = this.k;
 
     k.onMousePress(() => {
+      // First gesture unlocks audio (autoplay policy); starts saved track.
+      this.music.unlock();
       if (this.mode === "menu") {
         const p = k.mousePos();
+        // music chip first — it sits above the grid
+        if (this.menu.hitMusic(p.x, p.y)) {
+          playSound("swap");
+          this.music.cycle();
+          return;
+        }
         const cfg = this.menu.hitTest(p.x, p.y);
         if (cfg) {
           playSound("swap");
@@ -661,7 +671,7 @@ export class GameView {
 
   draw() {
     if (this.mode === "menu") {
-      this.menu.draw();
+      this.menu.draw(this.music.label);
       this.particles.draw();
       return;
     }

@@ -11,6 +11,7 @@ import { MenuScreen } from "./menu.ts";
 import { MusicPlayer } from "./music.ts";
 import { TutorialScreen } from "./tutorial.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
+import { Effects } from "./effects.ts";
 import { emojiText } from "./text.ts";
 import {
   BG_BOTTOM,
@@ -56,6 +57,7 @@ const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
 const END_OVERLAY_DELAY = 0.9; // seconds to watch the final board before the modal
 const WIN_CELEBRATE_SECS = 2.6; // how long confetti keeps showering on a win
 const WIN_WAVE_GAP = 0.4; // gap between confetti rain waves
+const HINT_DELAY = 3.0; // seconds idle before the move hint appears
 
 export class GameView {
   private mode: "menu" | "tutorial" | "play" = "menu";
@@ -87,7 +89,19 @@ export class GameView {
   // Menu scroll-drag: a press that turns into a scroll once the finger moves.
   private menuDrag: { startY: number; lastY: number; moved: boolean } | null = null;
   private particles: Particles;
+  private effects: Effects;
   private music = new MusicPlayer();
+  // Idle hint: seconds since the last input while a move is possible. After
+  // HINT_DELAY a legal swap is shown pulsing until the player acts.
+  private idle = 0;
+  private hint: [Pos, Pos] | null = null;
+  // Cascade depth within the current Resolution, for escalating praise words.
+  private cascadeDepth = 0;
+  // Screen position of each goal chip (collect-colours), filled by the HUD each
+  // frame so a cleared fruit can fly to its chip. Keyed by Colour.
+  private goalChipPos = new Map<Colour, { x: number; y: number }>();
+  // Per-colour HUD chip "bump" scale, decays each frame; bumped on arrival.
+  private chipBump = new Map<Colour, number>();
   private prevOutcome: "playing" | "won" | "lost" = "playing";
   // Seconds to linger on the final board before the end overlay appears, so the
   // last clears/falls are visible. Counts down from END_OVERLAY_DELAY once the
@@ -103,13 +117,101 @@ export class GameView {
     this.menu = new MenuScreen(k);
     this.tutorial = new TutorialScreen(k);
     this.particles = new Particles(k);
+    this.effects = new Effects(k);
     this.bind();
-    // advance particles every frame
-    k.onUpdate(() => this.particles.update(k.dt()));
+    // advance particles + effects every frame
+    k.onUpdate(() => {
+      this.particles.update(k.dt());
+      this.effects.update(k.dt());
+      // decay any goal-chip bumps
+      for (const [c, v] of this.chipBump) {
+        const nv = v - k.dt() * 4;
+        if (nv <= 0) this.chipBump.delete(c);
+        else this.chipBump.set(c, nv);
+      }
+    });
   }
 
   private newSeed() {
     return (Math.random() * 0xffffffff) >>> 0;
+  }
+
+  /** Whether the given sprite id sits on one of the current hint cells. */
+  private spriteInHint(id: number): boolean {
+    if (!this.hint) return false;
+    return this.hint.some((p) => this.viewGrid[p.row]?.[p.col] === id);
+  }
+
+  /**
+   * For each cleared cell whose candy is a collect-colours target, fly a fruit
+   * emoji from that cell to its goal chip, bumping the chip on arrival. No-op
+   * for other objective kinds (no goal chips).
+   */
+  private flyCollectedToGoal(ids: number[]) {
+    if (this.game.cfg.objective.kind !== "collect-colours") return;
+    const targets = new Set(this.game.objective.targets);
+    let launched = 0;
+    for (let i = 0; i < ids.length && launched < 6; i++) {
+      const s = this.sprites.get(ids[i]);
+      if (!s || s.colour === null || !targets.has(s.colour)) continue;
+      const dest = this.goalChipPos.get(s.colour);
+      if (!dest) continue;
+      const colour = s.colour;
+      this.effects.fly(
+        COLOUR_THEMES[colour].emoji,
+        s.x,
+        s.y,
+        dest.x,
+        dest.y,
+        this.layout.cell * 0.55,
+        () => this.chipBump.set(colour, 1),
+      );
+      launched++;
+    }
+  }
+
+  /**
+   * Draw the right special-clear effect from a special-activate's geometry: a
+   * horizontal beam if the cleared cells line up on the origin's row, a vertical
+   * beam if on its column, otherwise a radial flash (color bomb).
+   */
+  private specialBeam(origin: Pos, cleared: Pos[]) {
+    if (cleared.length === 0) return;
+    const { x: ox, y: oy } = cellCenter(this.layout, origin.row, origin.col);
+    const sameRow = cleared.every((p) => p.row === origin.row);
+    const sameCol = cleared.every((p) => p.col === origin.col);
+    const cell = this.layout.cell;
+    if (sameRow && !sameCol) {
+      const cy = oy;
+      const cx = this.layout.originX + this.layout.boardW / 2;
+      this.effects.rowBeam(cx, cy, this.layout.boardW, cell * 0.7, [255, 210, 90]);
+    } else if (sameCol && !sameRow) {
+      const cx = ox;
+      const cy = this.layout.originY + this.layout.boardH / 2;
+      this.effects.colBeam(cx, cy, this.layout.boardH, cell * 0.7, [255, 210, 90]);
+    } else {
+      this.effects.flash(ox, oy, cell * 3, [120, 200, 255]);
+    }
+  }
+
+  /** Pop an escalating praise word for a cascade of the given depth. */
+  private praiseCascade(depth: number) {
+    const words = ["Sweet!", "Tasty!", "Yummy!", "Delicious!", "Combo!", "Sugar Rush!"];
+    const colours: [number, number, number][] = [
+      [240, 140, 60],
+      [231, 76, 96],
+      [150, 89, 200],
+      [46, 184, 113],
+      [52, 130, 219],
+    ];
+    const word = words[Math.min(depth - 2, words.length - 1)];
+    const colour = colours[(depth - 2) % colours.length];
+    const x = this.layout.originX + this.layout.boardW / 2;
+    // place it a little higher for each deeper rung so stacked combos don't overlap
+    const y = this.layout.originY + this.layout.boardH * 0.32 - depth * 12;
+    const size = Math.min(48, this.layout.cell * (1.1 + depth * 0.08));
+    this.effects.word(word, x, y, colour, size);
+    playSound("special");
   }
 
   // White, used as the emoji tint. Kaplay multiplies a drawText's `color` into
@@ -242,13 +344,19 @@ export class GameView {
   // ---- step playback ------------------------------------------------------
 
   private async playSteps(steps: Step[]) {
+    this.cascadeDepth = 0;
     for (const step of steps) {
       await this.playStep(step);
       // Pace the cascade: pause after a clear so the gap is visible, and after
       // a spawn (end of one cascade round) before the next round begins.
       if (step.kind === "clear" || step.kind === "special-activate")
         await this.wait(AFTER_CLEAR_MS);
-      else if (step.kind === "spawn") await this.wait(AFTER_ROUND_MS);
+      else if (step.kind === "spawn") {
+        // each spawn ends one cascade round; praise escalating chains
+        this.cascadeDepth++;
+        if (this.cascadeDepth >= 2) this.praiseCascade(this.cascadeDepth);
+        await this.wait(AFTER_ROUND_MS);
+      }
     }
     // Final correction: align sprites to the view's own grid. By now viewGrid
     // matches board.grid, so this only fixes sub-pixel tween drift — it never
@@ -294,6 +402,10 @@ export class GameView {
         playSound(step.kind === "special-activate" ? "special" : "clear");
         // ids come straight from the payload — no guessing by position
         const cells = step.kind === "clear" ? step.cells : step.cleared;
+        if (step.kind === "special-activate")
+          this.specialBeam(step.origin, step.cleared);
+        // fruit collected toward a collect-colours goal flies to its HUD chip
+        this.flyCollectedToGoal(step.ids);
         await this.popIds(cells, step.ids);
         break;
       }
@@ -590,6 +702,8 @@ export class GameView {
       const p = k.mousePos();
       const cell = this.cellAt(p.x, p.y);
       if (!cell) return;
+      this.idle = 0; // any board interaction defers the hint
+      this.hint = null;
       this.dragStart = { pos: cell, px: p.x, py: p.y };
 
       // tap-tap: if something is selected, try to swap with this tap
@@ -664,6 +778,8 @@ export class GameView {
 
   private async requestSwap(a: Pos, b: Pos) {
     this.busy = true;
+    this.idle = 0;
+    this.hint = null;
     const { steps } = this.game.playMove(a, b);
     await this.playSteps(steps);
     // reshuffle if the resulting board is deadlocked
@@ -681,6 +797,18 @@ export class GameView {
   tick(dtSeconds: number) {
     if (this.mode !== "play") return;
     this.game.tick(dtSeconds);
+
+    // Idle hint: while the board is at rest and playable, count up; after the
+    // delay, surface a legal swap to nudge the player. Any action resets it.
+    if (!this.busy && this.game.outcome() === "playing") {
+      this.idle += dtSeconds;
+      if (this.idle >= HINT_DELAY && !this.hint) {
+        this.hint = this.game.board.findHint();
+      }
+    } else {
+      this.idle = 0;
+      this.hint = null;
+    }
     // Once the outcome is decided and the last Resolution has finished
     // animating, hold on the final board for a beat before the modal. Start the
     // countdown only when not busy so the closing clears/falls play out first.
@@ -819,14 +947,35 @@ export class GameView {
       });
     }
 
-    // candies
-    for (const s of this.sprites.values())
+    // idle hint: a pulsing glow ring under the two suggested tiles
+    let hintBounce = 0;
+    if (this.hint) {
+      const phase = k.time() * 6;
+      hintBounce = Math.max(0, Math.sin(phase)) * this.layout.cell * 0.12;
+      const glow = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(phase));
+      for (const p of this.hint) {
+        const { x, y } = cellCenter(this.layout, p.row, p.col);
+        k.drawRect({
+          pos: k.vec2(x - cell / 2, y - cell / 2),
+          width: cell,
+          height: cell,
+          radius: cell * 0.18,
+          color: k.rgb(255, 245, 200),
+          opacity: glow * 0.5,
+          outline: { width: 3, color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]) },
+        });
+      }
+    }
+
+    // candies (hinted tiles bounce up a touch)
+    for (const s of this.sprites.values()) {
+      const dy = this.spriteInHint(s.id) ? -hintBounce : 0;
       drawCandy(
         k,
         s.colour,
         s.special,
         s.x,
-        s.y,
+        s.y + dy,
         this.layout.cell,
         s.scale,
         s.ingredient,
@@ -836,8 +985,13 @@ export class GameView {
         s.box,
         s.boxHits,
       );
+    }
 
     this.drawHud();
+
+    // Transient effects (special-clear beams, cascade words, fruit flying to the
+    // goal) over the board + HUD, but under the end overlay.
+    this.effects.draw();
 
     // The end overlay appears only after the linger (tick handles the sting and
     // the countdown), so the final board moves stay visible for a beat.
@@ -1038,6 +1192,7 @@ export class GameView {
     const chips = Math.max(1, obj.targets.length);
     const slot = goalW / chips;
     const wide = chips <= 3;
+    this.goalChipPos.clear();
     obj.targets.forEach((colour, i) => {
       const cx = goalX + slot * (i + 0.5);
       const cy = panelY + panelH * 0.64;
@@ -1045,15 +1200,19 @@ export class GameView {
       const got = Math.min(obj.collected.get(colour) ?? 0, obj.quota);
       const emojiSize = Math.min(panelH * 0.36, slot * 0.5);
       const countSize = Math.min(panelH * 0.26, slot * 0.4);
+      // a bump scale when a fruit just flew in
+      const bump = 1 + (this.chipBump.get(colour) ?? 0) * 0.5;
+      const ex = wide ? cx - panelH * 0.18 : cx;
+      const ey = wide ? cy : cy - panelH * 0.14;
+      this.goalChipPos.set(colour, { x: ex, y: ey });
+      k.drawText({
+        text: theme.emoji,
+        pos: k.vec2(ex, ey),
+        size: emojiSize * bump,
+        anchor: "center",
+        color: this.white,
+      });
       if (wide) {
-        // roomy: emoji and count side by side
-        k.drawText({
-          text: theme.emoji,
-          pos: k.vec2(cx - panelH * 0.18, cy),
-          size: emojiSize,
-          anchor: "center",
-          color: this.white,
-        });
         k.drawText({
           text: `${got}/${obj.quota}`,
           pos: k.vec2(cx + panelH * 0.12, cy),
@@ -1062,14 +1221,6 @@ export class GameView {
           anchor: "left",
         });
       } else {
-        // tight: stack the count beneath the emoji
-        k.drawText({
-          text: theme.emoji,
-          pos: k.vec2(cx, cy - panelH * 0.14),
-          size: emojiSize,
-          anchor: "center",
-          color: this.white,
-        });
         k.drawText({
           text: `${got}/${obj.quota}`,
           pos: k.vec2(cx, cy + panelH * 0.2),

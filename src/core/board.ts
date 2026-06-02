@@ -377,6 +377,35 @@ export class Board {
     return this.hasLegalMoveOn(this.grid);
   }
 
+  /**
+   * Find one legal swap (the two cells to swap), for the idle hint. Returns the
+   * adjacent pair, or null if the board is deadlocked. Same scan as
+   * hasLegalMoveOn but yields the pair instead of a boolean.
+   */
+  findHint(): [Pos, Pos] | null {
+    const grid = this.grid;
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        for (const [dr, dc] of [
+          [0, 1],
+          [1, 0],
+        ]) {
+          const nr = r + dr;
+          const nc = c + dc;
+          if (!this.inBounds(nr, nc)) continue;
+          if (this.immovable(grid[r][c]) || this.immovable(grid[nr][nc])) continue;
+          this.swapCells(grid, r, c, nr, nc);
+          const legal =
+            this.isSpecialSwap(grid, { row: r, col: c }, { row: nr, col: nc }) ||
+            this.hasAnyMatch(grid);
+          this.swapCells(grid, r, c, nr, nc);
+          if (legal) return [{ row: r, col: c }, { row: nr, col: nc }];
+        }
+      }
+    }
+    return null;
+  }
+
   private hasLegalMoveOn(grid: Grid): boolean {
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {

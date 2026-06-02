@@ -4,7 +4,7 @@
 
 import type { KAPLAYCtx } from "kaplay";
 import {
-  CHALLENGES,
+  MENU_CHALLENGES,
   type ChallengeConfig,
   type Difficulty,
 } from "../core/config.ts";
@@ -148,7 +148,7 @@ export class MenuScreen {
     const colGap = W * 0.03;
     const rowGap = Math.max(8, H * 0.014);
     const cols = 2;
-    const rows = Math.ceil(CHALLENGES.length / cols);
+    const rows = Math.ceil(MENU_CHALLENGES.length / cols);
     const cardW = (W - sideX * 2 - colGap * (cols - 1)) / cols;
     const cardH = CARD_H;
     const bottomPad = H * 0.03;
@@ -164,7 +164,7 @@ export class MenuScreen {
 
     this.cards = [];
     const drawGrid = () => {
-      CHALLENGES.forEach((cfg, i) => {
+      MENU_CHALLENGES.forEach((cfg, i) => {
         const col = i % cols;
         const row = Math.floor(i / cols);
         const x = sideX + col * (cardW + colGap);

@@ -29,6 +29,12 @@ export interface JellySpec {
 export interface ChallengeConfig {
   /** Stable id (used as the menu key). */
   id: string;
+  /**
+   * Hidden from the level-select menu (still constructible via challengeById and
+   * exercised by tests). Used to park work-in-progress challenges without
+   * deleting them.
+   */
+  hidden?: boolean;
   /** Display name on the menu. */
   name: string;
   /** One-line description for the menu card. */
@@ -205,6 +211,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   // ---- New gentle variations ------------------------------------------------
   {
     id: "tiny-kitchen",
+    hidden: true,
     name: "Tiny Kitchen",
     blurb: "A cosy little board — gather one fruit, nice and easy.",
     difficulty: "Easy",
@@ -222,6 +229,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "rainbow-platter",
+    hidden: true,
     name: "Rainbow Platter",
     blurb: "A taste of every fruit — collect a few of all five.",
     difficulty: "Easy",
@@ -239,6 +247,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "jelly-island",
+    hidden: true,
     name: "Jelly Island",
     blurb: "A calm, roomy board with a big island of jelly.",
     difficulty: "Easy",
@@ -257,6 +266,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "brick-bakery",
+    hidden: true,
     name: "Brick Bakery",
     blurb: "Clear the jelly while a few bricks sit on the floor.",
     difficulty: "Easy",
@@ -294,6 +304,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "snack-cart",
+    hidden: true,
     name: "Snack Cart",
     blurb: "The quickest burger — drop just two parts to the floor.",
     difficulty: "Easy",
@@ -312,6 +323,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "combo-chef",
+    hidden: true,
     name: "Combo Chef",
     blurb: "Cook up special candies by matching four or more.",
     difficulty: "Easy",
@@ -346,6 +358,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "avalanche",
+    hidden: true,
     name: "Avalanche",
     blurb: "Burger parts keep raining down — catch six at the bottom.",
     difficulty: "Easy",
@@ -365,6 +378,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "frosting-drip",
+    hidden: true,
     name: "Frosting Drip",
     blurb: "The jelly creeps — clear it each turn to hold it back.",
     difficulty: "Easy",
@@ -383,6 +397,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "gift-boxes",
+    hidden: true,
     name: "Gift Boxes",
     blurb: "Crack open the parcels to free the burger parts inside.",
     difficulty: "Easy",
@@ -403,6 +418,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "color-lock",
+    hidden: true,
     name: "Color Lock",
     blurb: "Some candies are frozen — melt the frost to free them.",
     difficulty: "Easy",
@@ -421,6 +437,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "sticky-situation",
+    hidden: true,
     name: "Sticky Situation",
     blurb: "Gummy blobs guard the floor — chew through and pop them!",
     difficulty: "Easy",
@@ -442,6 +459,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "iron-floor",
+    hidden: true,
     name: "Iron Floor",
     blurb: "Tough triple-layer bricks line the floor — chip them down.",
     difficulty: "Easy",
@@ -462,6 +480,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "candy-factory",
+    hidden: true,
     name: "Candy Factory",
     blurb: "A machine feeds striped candies into the line — use them!",
     difficulty: "Easy",
@@ -520,6 +539,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "jail-break",
+    hidden: true,
     name: "Jail Break",
     blurb: "Little friends are caged on the floor — break them free!",
     difficulty: "Easy",
@@ -542,6 +562,11 @@ export const CHALLENGES: ChallengeConfig[] = [
 
 export const challengeById = (id: string): ChallengeConfig =>
   CHALLENGES.find((c) => c.id === id) ?? DEFAULT_CHALLENGE;
+
+/** Challenges shown on the level-select menu (hidden ones are parked WIP). */
+export const MENU_CHALLENGES: ChallengeConfig[] = CHALLENGES.filter(
+  (c) => !c.hidden,
+);
 
 // ---- Back-compat constants -------------------------------------------------
 // The view's layout maths and the original unit tests still read these globals.

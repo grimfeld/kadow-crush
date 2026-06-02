@@ -17,13 +17,16 @@ const cfg: ChallengeConfig = {
 };
 
 describe("Chocolate", () => {
-  it("places the configured number of chocolate tiles (bottom-anchored)", () => {
+  it("places the configured number of chocolate tiles around the middle", () => {
     const b = new Board(makeRng(2), cfg);
     expect(b.chocolateRemaining()).toBe(7);
-    // all chocolate sits in the lower rows (bottom-anchored fill)
+    // chocolate clusters near the board centre (within a small radius)
+    const cr = Math.floor((b.rows - 1) / 2);
+    const cc = Math.floor((b.cols - 1) / 2);
     for (let r = 0; r < b.rows; r++)
       for (let c = 0; c < b.cols; c++)
-        if (b.grid[r][c]?.chocolate) expect(r).toBeGreaterThanOrEqual(b.rows - 2);
+        if (b.grid[r][c]?.chocolate)
+          expect(Math.abs(r - cr) + Math.abs(c - cc)).toBeLessThanOrEqual(4);
   });
 
   it("chocolate is immovable", () => {

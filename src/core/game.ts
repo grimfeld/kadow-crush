@@ -121,6 +121,14 @@ export class Game {
           );
         }
       }
+      // Frosting Drip: jelly creeps on a Move that cleared none of it — so
+      // clearing jelly every turn keeps the spread in check. Skip once the
+      // level is already decided by this Move.
+      const clearedJelly = steps.some((s) => s.kind === "jelly-clear");
+      if (!clearedJelly && this.outcome() === "playing") {
+        const spread = this.board.spreadJelly();
+        if (spread) steps.push(spread);
+      }
     }
     return { steps, consumedMove };
   }

@@ -33,6 +33,8 @@ export class Board {
   grid: Grid;
   /** Remaining Jelly layers per cell (0 = no jelly). Parallel to `grid`. */
   jelly: number[][];
+  /** Frosting Drip: whether jelly creeps onto new cells between Moves. */
+  readonly jellySpreads: boolean;
   /** Ingredients (burger parts) that have reached the bottom and left. */
   ingredientsCollected = 0;
   /** Which burger parts have been collected (parallel record for the HUD). */
@@ -61,6 +63,7 @@ export class Board {
     this.boxHits = cfg.boxHits ?? 2;
     this.grid = this.generateSolvableGrid();
     this.jelly = this.buildJelly(cfg.jelly);
+    this.jellySpreads = cfg.jelly?.spread ?? false;
   }
 
   /** Build the Jelly layer from the challenge's spec (pattern + layers). */
@@ -96,6 +99,47 @@ export class Board {
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) total += this.jelly[r][c];
     return total;
+  }
+
+  /** Number of cells currently carrying any jelly. */
+  private jelliedCellCount(): number {
+    let n = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) if (this.jelly[r][c] > 0) n++;
+    return n;
+  }
+
+  /**
+   * Frosting Drip: creep one layer of jelly onto a single un-jellied cell that
+   * borders existing jelly. Returns the Step, or null when spreading is off, the
+   * coverage cap (≈45% of the board) is reached, or there is nowhere to creep.
+   * Deterministic via the seeded rng, so a given board plays out identically.
+   */
+  spreadJelly(): Step | null {
+    if (!this.jellySpreads) return null;
+    const cap = Math.floor(this.rows * this.cols * 0.45);
+    if (this.jelliedCellCount() >= cap) return null;
+    // candidate = un-jellied cell orthogonally adjacent to a jellied one
+    const candidates: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        if (this.jelly[r][c] > 0) continue;
+        const touchesJelly = [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ].some(([dr, dc]) => {
+          const nr = r + dr;
+          const nc = c + dc;
+          return this.inBounds(nr, nc) && this.jelly[nr][nc] > 0;
+        });
+        if (touchesJelly) candidates.push({ row: r, col: c });
+      }
+    if (candidates.length === 0) return null;
+    const p = candidates[this.rng.int(candidates.length)];
+    this.jelly[p.row][p.col] = 1;
+    return { kind: "jelly-spread", cells: [p], levels: [1] };
   }
 
   private inBounds(row: number, col: number): boolean {

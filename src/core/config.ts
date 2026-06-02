@@ -12,6 +12,12 @@ export type Difficulty = "Easy" | "Medium" | "Hard";
 export interface JellySpec {
   layers: number;
   /**
+   * Frosting Drip: if set, jelly creeps. On any Move that clears no jelly, one
+   * un-jellied cell next to existing jelly gains a layer — until a cap (a
+   * fraction of the board) is hit. Clearing jelly each turn holds it back.
+   */
+  spread?: boolean;
+  /**
    * Coverage pattern:
    * - "all": every cell (hardest — must clear over every tile)
    * - "checker": every other cell, spread across the board
@@ -292,6 +298,24 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Swap as fast as you like — there's no move limit.",
       "Every candy you pop adds to your score.",
       "Win: reach the points shown before time runs out.",
+    ],
+  },
+  {
+    id: "frosting-drip",
+    name: "Frosting Drip",
+    blurb: "The jelly creeps — clear it each turn to hold it back.",
+    difficulty: "Easy",
+    rows: 7,
+    cols: 7,
+    colourCount: 5,
+    moves: 32,
+    objective: { kind: "clear-jelly" },
+    jelly: { layers: 1, pattern: "center", spread: true },
+    tutorial: [
+      "Purple jelly sits in the middle, like before.",
+      "But this jelly creeps! ❄️ It spreads on any turn you don't clear some.",
+      "Clear at least a little jelly each turn to keep it shrinking.",
+      "Win: wipe out all the jelly before your moves run out.",
     ],
   },
   {

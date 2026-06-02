@@ -323,6 +323,15 @@ export class GameView {
         });
         break;
       }
+      case "jelly-spread": {
+        // Frosting Drip crept onto new cells — flash them in and hold a beat
+        playSound("invalid");
+        step.cells.forEach((p, i) => {
+          this.viewJelly[p.row][p.col] = step.levels[i];
+        });
+        await this.wait(AFTER_CLEAR_MS);
+        break;
+      }
       case "ingredient-collect": {
         // a burger part reached the bottom — slide it off the board edge
         playSound("special");

@@ -67,6 +67,8 @@ export type Step =
   | { kind: "spawn"; spawns: { id: number; colour: Colour; at: Pos }[] }
   // A clear reduced the Jelly layer on these cells (parallel `level` = remaining).
   | { kind: "jelly-clear"; cells: Pos[]; levels: number[] }
+  // Frosting Drip: jelly crept onto these new cells (parallel `levels` = new).
+  | { kind: "jelly-spread"; cells: Pos[]; levels: number[] }
   // Ingredients (burger parts) reached the bottom and dropped off. `kinds`
   // runs parallel to `cells`/`ids`: which burger part each collected piece is.
   | { kind: "ingredient-collect"; cells: Pos[]; ids: number[]; kinds: number[] }

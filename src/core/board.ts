@@ -288,7 +288,8 @@ export class Board {
     for (let i = 0; i < n; i++) grid[0][cols[i]] = this.newIngredient(i);
   }
 
-  /** Greedy fill that never completes a line of 3 as it places candies. */
+  /** Greedy fill that never completes a line of 3 OR a 2×2 as it places candies
+   *  (so a freshly generated board has no pre-existing Match of any shape). */
   private fillNoMatches(): Grid {
     const grid: Grid = Array.from({ length: this.rows }, () =>
       Array<Candy | null>(this.cols).fill(null),
@@ -302,9 +303,21 @@ export class Board {
         if (r >= 2 && grid[r - 1][c]!.colour === grid[r - 2][c]!.colour) {
           banned.add(grid[r - 1][c]!.colour!);
         }
+        // would this complete a 2×2 with the three cells up-left of it?
+        if (
+          r >= 1 &&
+          c >= 1 &&
+          grid[r - 1][c]!.colour === grid[r][c - 1]!.colour &&
+          grid[r - 1][c]!.colour === grid[r - 1][c - 1]!.colour
+        ) {
+          banned.add(grid[r - 1][c]!.colour!);
+        }
         const choices: Colour[] = [];
         for (let k = 0; k < this.colourCount; k++)
           if (!banned.has(k)) choices.push(k);
+        // fall back to any colour if everything is banned (rare on small palettes)
+        if (choices.length === 0)
+          for (let k = 0; k < this.colourCount; k++) choices.push(k);
         grid[r][c] = this.newCandy(this.rng.pick(choices));
       }
     }
@@ -371,8 +384,49 @@ export class Board {
     return runs;
   }
 
+  /** All top-left corners of a 2×2 same-colour block (a "square match"). */
+  private findSquares(grid: Grid): Pos[] {
+    const out: Pos[] = [];
+    for (let r = 0; r < this.rows - 1; r++)
+      for (let c = 0; c < this.cols - 1; c++) {
+        const col = this.colourAt(grid, r, c);
+        if (
+          col !== null &&
+          this.colourAt(grid, r, c + 1) === col &&
+          this.colourAt(grid, r + 1, c) === col &&
+          this.colourAt(grid, r + 1, c + 1) === col
+        )
+          out.push({ row: r, col: c });
+      }
+    return out;
+  }
+
   private hasAnyMatch(grid: Grid): boolean {
-    return this.findRuns(grid).length > 0;
+    return this.findRuns(grid).length > 0 || this.findSquares(grid).length > 0;
+  }
+
+  /**
+   * The full set of matched cells this pass: every run cell plus every 2×2
+   * square cell. Used both to clear and to classify Specials by shape.
+   */
+  private matchedCells(grid: Grid): Pos[] {
+    const seen = new Set<string>();
+    const cells: Pos[] = [];
+    const add = (p: Pos) => {
+      const k = key(p);
+      if (!seen.has(k)) {
+        seen.add(k);
+        cells.push(p);
+      }
+    };
+    for (const run of this.findRuns(grid)) for (const p of run.cells) add(p);
+    for (const sq of this.findSquares(grid)) {
+      add(sq);
+      add({ row: sq.row, col: sq.col + 1 });
+      add({ row: sq.row + 1, col: sq.col });
+      add({ row: sq.row + 1, col: sq.col + 1 });
+    }
+    return cells;
   }
 
   // ---- legal-move detection ----------------------------------------------
@@ -1043,18 +1097,18 @@ export class Board {
   private resolve(steps: Step[], swap: { swapA: Pos; swapB: Pos }, cleared: Colour[]) {
     let firstPass = true;
     for (;;) {
-      const runs = this.findRuns(this.grid);
+      // matched cells = run cells (lines) + square (2×2) cells
+      const matched = this.matchedCells(this.grid);
 
-      if (runs.length > 0) {
-        // Decide Special creation per run before clearing.
-        const specialsToCreate = this.planSpecials(runs, firstPass ? swap : null);
+      if (matched.length > 0) {
+        // Decide Special creation by shape before clearing.
+        const specialsToCreate = this.planSpecials(matched, firstPass ? swap : null);
 
         // Collect every cell to clear, but spare cells that become a Special.
         const spare = new Set(specialsToCreate.map((s) => key(s.at)));
         const clearCells: Pos[] = [];
-        for (const run of runs)
-          for (const cell of run.cells)
-            if (!spare.has(key(cell))) clearCells.push(cell);
+        for (const cell of matched)
+          if (!spare.has(key(cell))) clearCells.push(cell);
 
         const cleared2 = this.clearCells(dedupe(clearCells), cleared);
         steps.push({
@@ -1088,7 +1142,7 @@ export class Board {
       // a swapped Special's blast, which produce no colour run of their own.
       if (this.hasHoles()) {
         this.settle(steps);
-      } else if (runs.length === 0) {
+      } else if (matched.length === 0) {
         break; // stable: no matches and no holes
       }
       firstPass = false;
@@ -1140,35 +1194,22 @@ export class Board {
   }
 
   /**
-   * Choose where Specials are created from this pass's runs, by SHAPE not just
-   * line length. Runs are grouped into connected same-colour components (a T/L
-   * is a horizontal run meeting a vertical run); each component yields at most
-   * one Special, classified by priority:
-   *   color-bomb (line ≥5) > coloring (blob ≥6) > wrapped (T/L) >
-   *   fish (contains a 2×2 block) > striped (line of 4).
+   * Choose where Specials are created from this pass's matched cells, by SHAPE.
+   * The matched set (line runs + 2×2 squares) is split into connected
+   * same-colour components; each yields at most one Special, classified by
+   * priority: color-bomb (line ≥5) > coloring (blob ≥6) > wrapped (T/L) >
+   * fish (contains a 2×2 block) > striped (line of 4).
    */
   private planSpecials(
-    runs: Run[],
+    matched: Pos[],
     swap: { swapA: Pos; swapB: Pos } | null,
   ): { at: Pos; special: SpecialType; colour: Colour }[] {
     const out: { at: Pos; special: SpecialType; colour: Colour }[] = [];
-    if (runs.length === 0) return out;
+    if (matched.length === 0) return out;
 
-    // Union all run cells, then split into connected same-colour components.
-    const cellRun = new Map<string, Run[]>(); // cell key → runs covering it
-    const all: Pos[] = [];
-    for (const run of runs) {
-      for (const p of run.cells) {
-        const kk = key(p);
-        if (!cellRun.has(kk)) {
-          cellRun.set(kk, []);
-          all.push(p);
-        }
-        cellRun.get(kk)!.push(run);
-      }
-    }
+    const inMatch = new Set(matched.map(key));
     const seen = new Set<string>();
-    for (const start of all) {
+    for (const start of matched) {
       if (seen.has(key(start))) continue;
       // BFS the component of same-colour matched cells (4-connected)
       const colour = this.grid[start.row][start.col]!.colour!;
@@ -1187,7 +1228,7 @@ export class Board {
           const np = { row: p.row + dr, col: p.col + dc };
           const nk = key(np);
           if (
-            cellRun.has(nk) &&
+            inMatch.has(nk) &&
             !seen.has(nk) &&
             this.grid[np.row]?.[np.col]?.colour === colour
           ) {

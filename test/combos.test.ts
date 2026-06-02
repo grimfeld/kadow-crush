@@ -55,6 +55,49 @@ describe("special creation by shape", () => {
   });
 });
 
+describe("fish from a 2x2 square", () => {
+  it("a swap forming a 2x2 block (no line) creates a fish", () => {
+    const b = makeBoard(4);
+    // isolate a patch in rows 1..2 so only the intended square forms
+    for (let r = 0; r <= 3; r++)
+      for (let c = 0; c <= 4; c++) b.grid[r][c] = { id: r * 10 + c, colour: 1, special: null };
+    // colour-0 at (1,1),(2,1),(2,2); a colour-0 at (1,3) swaps left into (1,2)
+    b.grid[1][1] = { id: 211, colour: 0, special: null };
+    b.grid[2][1] = { id: 221, colour: 0, special: null };
+    b.grid[2][2] = { id: 222, colour: 0, special: null };
+    b.grid[1][2] = { id: 212, colour: 1, special: null };
+    b.grid[1][3] = { id: 213, colour: 0, special: null };
+    // guard against an accidental 3-line: keep row1 cols beyond 3 colour 1
+    const res = b.trySwap({ row: 1, col: 3 }, { row: 1, col: 2 });
+    expect(res.consumedMove).toBe(true);
+    const made = res.steps
+      .filter((s) => s.kind === "special-create")
+      .map((s: any) => s.special);
+    expect(made).toContain("fish");
+  });
+
+  it("freshly generated boards contain no 2x2 same-colour block", () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      const b = makeBoard(seed);
+      let square = false;
+      for (let r = 0; r < b.rows - 1 && !square; r++)
+        for (let c = 0; c < b.cols - 1; c++) {
+          const col = b.grid[r][c]?.colour;
+          if (
+            col != null &&
+            b.grid[r][c + 1]?.colour === col &&
+            b.grid[r + 1][c]?.colour === col &&
+            b.grid[r + 1][c + 1]?.colour === col
+          ) {
+            square = true;
+            break;
+          }
+        }
+      expect(square).toBe(false);
+    }
+  });
+});
+
 describe("special + special combos", () => {
   it("striped + striped clears a full row AND column (cross)", () => {
     const b = makeBoard(2);

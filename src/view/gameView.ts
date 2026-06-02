@@ -95,6 +95,10 @@ export class GameView {
   // During a Sugar Crush, the leftover-move count shown ticking down in the HUD
   // (-1 = not in a finale; the real game.movesLeft is already 0).
   private finaleMoves = -1;
+  // In-game Back button hit rect (set each HUD draw) + an abort flag so an
+  // in-flight Resolution stops touching the board after we leave to the menu.
+  private backRect = { x: 0, y: 0, w: 0, h: 0 };
+  private aborted = false;
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
@@ -304,6 +308,8 @@ export class GameView {
     this.layout = computeLayout(this.k.width(), this.k.height(), cfg.rows, cfg.cols);
     this.selected = null;
     this.dragStart = null;
+    this.aborted = false;
+    this.busy = false;
     this.prevOutcome = "playing";
     this.endHold = 0;
     this.celebrateLeft = 0;
@@ -317,10 +323,15 @@ export class GameView {
   }
 
   private returnToMenu() {
+    // Abandon any in-flight Resolution: the running playSteps loop checks
+    // `aborted` and bails without touching the (now stale) board.
+    this.aborted = true;
+    this.busy = false;
     this.mode = "menu";
     this.selected = null;
     this.dragStart = null;
     this.menuDrag = null;
+    this.finaleMoves = -1;
     this.sprites.clear();
   }
 
@@ -423,6 +434,7 @@ export class GameView {
   private async playSteps(steps: Step[]) {
     this.cascadeDepth = 0;
     for (const step of steps) {
+      if (this.aborted) return; // left to the menu mid-Resolution
       await this.playStep(step);
       // The Sugar Crush finale is long (many stripes + sweeps), so pace it much
       // faster and skip the per-round praise spam.
@@ -898,6 +910,17 @@ export class GameView {
         }
         return;
       }
+      // In-game Back button works any time (even mid-Resolution): abandon the
+      // game and return to the level list.
+      {
+        const p = k.mousePos();
+        const r = this.backRect;
+        if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
+          playSound("swap");
+          this.returnToMenu();
+          return;
+        }
+      }
       if (this.busy || this.game.outcome() !== "playing") {
         this.handleOverlayClick();
         return;
@@ -994,6 +1017,7 @@ export class GameView {
       this.finaleMoves = steps.filter((s) => s.kind === "sugar-convert").length;
     }
     await this.playSteps(steps);
+    if (this.aborted) return; // left to the menu; the old game is discarded
     this.finaleMoves = -1;
     // reshuffle if the resulting board is deadlocked
     if (this.game.outcome() === "playing") {
@@ -1263,6 +1287,36 @@ export class GameView {
     });
   }
 
+  /** A small "‹ Back" pill in the top-left corner; abandons the game. */
+  private drawBackButton() {
+    const k = this.k;
+    const bh = Math.max(28, Math.min(40, this.k.height() * 0.045));
+    const text = "‹ Back";
+    const size = bh * 0.42;
+    const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
+    const bw = m.width + bh * 0.9;
+    // top-left corner
+    const x = Math.max(6, this.k.width() * 0.02);
+    const y = Math.max(6, this.k.height() * 0.012);
+    this.backRect = { x, y, w: bw, h: bh };
+    k.drawRect({
+      pos: k.vec2(x, y),
+      width: bw,
+      height: bh,
+      radius: bh / 2,
+      color: k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
+      opacity: 0.92,
+      outline: { width: 2, color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]) },
+    });
+    k.drawText({
+      text,
+      pos: k.vec2(x + bw / 2, y + bh / 2),
+      size,
+      color: k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]),
+      anchor: "center",
+    });
+  }
+
   private drawHud() {
     const k = this.k;
     const h = this.layout.hudH;
@@ -1272,8 +1326,11 @@ export class GameView {
     const accent = k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]);
     const obj = this.game.objective;
 
-    const panelH = h * 0.62;
-    const panelY = h * 0.14;
+    // Back button first — the panels start below it so nothing overlaps.
+    this.drawBackButton();
+    const panelTop = this.backRect.y + this.backRect.h + h * 0.04;
+    const panelH = Math.min(h * 0.62, h - panelTop - h * 0.06);
+    const panelY = panelTop;
     const movesW = Math.max(86, this.layout.boardW * 0.32);
 
     // --- Moves panel (left) — shows the clock instead for timed challenges. ---

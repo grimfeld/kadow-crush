@@ -18,7 +18,8 @@ export function computeLayout(
   rows: number,
   cols: number,
 ): Layout {
-  const hudH = Math.min(120, Math.max(64, vh * 0.12));
+  // Top strip holds the Back button plus the Moves/Goal panels stacked below it.
+  const hudH = Math.min(140, Math.max(96, vh * 0.15));
   const padX = vw * 0.04;
   const padBottom = vh * 0.04;
   const availW = vw - padX * 2;

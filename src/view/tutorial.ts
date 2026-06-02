@@ -6,6 +6,7 @@
 import type { KAPLAYCtx } from "kaplay";
 import type { ChallengeConfig } from "../core/config.ts";
 import { objectiveSummary } from "./menu.ts";
+import { emojiText } from "./text.ts";
 import { BG_BOTTOM, BG_TOP, TEXT_ACCENT, TEXT_DARK } from "./theme.ts";
 
 // The same first lesson on every level — how to actually move pieces.
@@ -152,9 +153,9 @@ export class TutorialScreen {
       pos: k.vec2(x, y),
       size,
       width,
-      color,
       anchor: "topleft",
       lineSpacing: 4,
+      ...emojiText(k, color),
     });
     k.drawFormattedText(fmt);
     return y + fmt.height + gap;

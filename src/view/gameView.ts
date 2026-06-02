@@ -10,6 +10,7 @@ import { cellCenter, computeLayout, type Layout } from "./layout.ts";
 import { MenuScreen } from "./menu.ts";
 import { TutorialScreen } from "./tutorial.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
+import { emojiText } from "./text.ts";
 import {
   BG_BOTTOM,
   BG_TOP,
@@ -1062,7 +1063,13 @@ export class GameView {
       if (m.width <= maxW || s <= size * 0.5) break;
       s *= 0.9;
     }
-    k.drawText({ text, pos: k.vec2(cx, cy), size: s, color, anchor: "center" });
+    k.drawText({
+      text,
+      pos: k.vec2(cx, cy),
+      size: s,
+      anchor: "center",
+      ...emojiText(k, color),
+    });
   }
 }
 

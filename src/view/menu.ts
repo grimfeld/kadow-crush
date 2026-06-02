@@ -55,6 +55,8 @@ export function objectiveSummary(cfg: ChallengeConfig): string {
       return o.count === 1 ? "Free the trapped friend" : `Free ${o.count} trapped friends`;
     case "clear-chocolate":
       return "Clear all the chocolate";
+    case "spread-jam":
+      return `Spread jam to ${o.count} tiles`;
   }
 }
 

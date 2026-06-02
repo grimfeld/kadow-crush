@@ -95,6 +95,12 @@ export interface ChallengeConfig {
    */
   chocolate?: number;
   /**
+   * Spread-the-Jam: number of jam seeds placed at start. Jam coats a candy;
+   * swapping a jammed candy spreads jam to its same-colour orthogonal
+   * neighbours. Pair with a spread-jam objective (cover N cells).
+   */
+  jam?: number;
+  /**
    * Number of Frozen candies (Color Lock) scattered at start. Each is frosted
    * over — unmatchable until an adjacent Match thaws it into a normal candy.
    */
@@ -472,6 +478,25 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Every few candies it drops are striped specials!",
       "Line them up or swap them to clear whole rows.",
       "Win: reach the points shown before your moves run out.",
+    ],
+  },
+  {
+    id: "jam-session",
+    name: "Jam Session",
+    blurb: "A few jammy candies — swap them to spread jam across the board.",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 30,
+    objective: { kind: "spread-jam", count: 20 },
+    jam: 3,
+    tutorial: [
+      "A few candies start coated in red jam 🍓.",
+      "Swap a jammed candy and the jam spreads to its",
+      "same-colour neighbours next to it.",
+      "Keep swapping jammed candies to grow the jam.",
+      "Win: cover the number of tiles shown in jam.",
     ],
   },
   {

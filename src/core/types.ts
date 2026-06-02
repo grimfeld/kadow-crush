@@ -140,6 +140,8 @@ export type Step =
   // Chocolate crept onto these cells (turned a candy into chocolate). `ids` are
   // the NEW chocolate tile ids; the candy that was there is gone.
   | { kind: "choco-spread"; cells: Pos[]; ids: number[] }
+  // Jam coated these new cells (Spread-the-Jam) when a jammed candy was swapped.
+  | { kind: "jam-spread"; cells: Pos[] }
   // Sugar Crush: one leftover Move spent turning a Candy into a Striped Special.
   // `movesLeft` is the count remaining AFTER this conversion (for the HUD tick).
   | {
@@ -184,7 +186,9 @@ export type ObjectiveSpec =
   // Free-It: break the casing off all `count` trapped items before moves run out.
   | { kind: "free-items"; count: number }
   // Clear-the-Chocolate: remove every chocolate tile before moves run out.
-  | { kind: "clear-chocolate" };
+  | { kind: "clear-chocolate" }
+  // Spread-the-Jam: get jam onto at least `count` cells before moves run out.
+  | { kind: "spread-jam"; count: number };
 
 export type ObjectiveKind = ObjectiveSpec["kind"];
 

@@ -92,6 +92,8 @@ The Objective generalises beyond colour-collection. Each Challenge has exactly o
 - **Make Specials** — create a number of Special Candies (striped / colour bomb) within the move budget. Each Special created counts once.
 - **Beat the Clock** — reach a Score target within a real-seconds time limit; the move budget does not apply. The Game accrues elapsed time from the view's per-frame tick, and the HUD shows a countdown in place of Moves.
 - **Free It** — break the casing off every trapped (Cased) item before moves run out.
+- **Clear the Chocolate** — remove every Chocolate tile before moves run out.
+- **Spread the Jam** — get Jam onto at least `count` cells before moves run out.
 
 ### Score
 A running point total for a Challenge whose Objective is Score. Points accrue as Candies clear.
@@ -116,6 +118,12 @@ An immovable, gravity-blocking floor tile like a Blocker, with multiple layers (
 
 ### Cased Item (Free-It)
 A trapped collectible locked inside breakable casing — immovable and gravity-blocking like a Blocker, with `caseLayers` of casing. An adjacent Match chips one layer; at zero the item is **freed** (removed and counted toward the Free-It objective).
+
+### Chocolate (Clear-the-Chocolate)
+An immovable, gravity-blocking tile (no Candy), placed as a bottom-anchored block. An adjacent Match clears one tile; on any Move that clears **no** chocolate it **spreads**, turning a neighbouring Candy cell into chocolate (capped ~55% of the board). Clear at least one piece each turn to keep it shrinking. Cleared when none remain.
+
+### Jam (Spread-the-Jam)
+A coating on a Candy (cell-bound, like Jelly). Swapping a jammed Candy spreads the jam onto its orthogonally-adjacent **same-colour** Candies. The goal is to grow the jam to cover a target number of cells.
 
 ### Generator
 A machine above certain columns. Its column refills with normal Candies, but every Nth Candy it emits becomes a chosen Special (configured per Challenge as `{col, special, every}`) — steady Special pressure for harder levels. View-only: a machine icon is drawn above each generator column.

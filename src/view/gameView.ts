@@ -22,6 +22,8 @@ import {
   COLOUR_THEMES,
   GRID_PANEL,
   GRID_PANEL_BORDER,
+  JAM_FILL,
+  JAM_OUTLINE,
   JELLY_FILL,
   JELLY_OUTLINE,
   PANEL_BORDER,
@@ -85,6 +87,9 @@ export class GameView {
   // board's own jelly is already at its final state mid-resolution — same rule
   // as viewGrid vs board.grid).
   private viewJelly: number[][] = [];
+  // The view's mirror of the jam coating (Spread-the-Jam), driven by jam-spread
+  // steps and resynced to the board at rest points.
+  private viewJam: boolean[][] = [];
   // Burger parts collected so far, mirrored for the HUD (driven by collect
   // steps; resynced to the board at rest points).
   private viewBurger = new Set<number>();
@@ -355,6 +360,7 @@ export class GameView {
       Array<number | null>(this.cols).fill(null),
     );
     this.viewJelly = this.game.board.jelly.map((row) => row.slice());
+    this.viewJam = this.game.board.jam.map((row) => row.slice());
     this.viewBurger = new Set(this.game.board.collectedIngredientKinds);
     this.viewCollected = this.game.board.ingredientsCollected;
     this.viewFreed = this.game.board.itemsFreed;
@@ -724,6 +730,17 @@ export class GameView {
           this.setAt(p, step.ids[i]);
         });
         await Promise.all(step.ids.map((id) => this.pulse(id)));
+        break;
+      }
+      case "jam-spread": {
+        // jam crept onto same-colour neighbours of a swapped jammed candy
+        playSound("special");
+        for (const p of step.cells) {
+          this.viewJam[p.row][p.col] = true;
+          const { x, y } = cellCenter(this.layout, p.row, p.col);
+          this.particles.burst(x, y, JAM_FILL, 5);
+        }
+        await this.wait(AFTER_CLEAR_MS);
         break;
       }
       case "item-free": {
@@ -1232,6 +1249,18 @@ export class GameView {
             },
           });
         }
+        if (this.viewJam[r]?.[c]) {
+          // a glossy red jam coating under the candy
+          k.drawRect({
+            pos: k.vec2(x - cell / 2 + 2, y - cell / 2 + 2),
+            width: cell - 4,
+            height: cell - 4,
+            radius: cell * 0.22,
+            color: k.rgb(JAM_FILL[0], JAM_FILL[1], JAM_FILL[2]),
+            opacity: 0.7,
+            outline: { width: Math.max(2, cell * 0.06), color: k.rgb(JAM_OUTLINE[0], JAM_OUTLINE[1], JAM_OUTLINE[2]) },
+          });
+        }
       }
 
     // selection highlight
@@ -1558,6 +1587,26 @@ export class GameView {
         panelY + panelH * 0.68,
         goalW * 0.9,
         panelH * 0.38,
+        accent,
+      );
+      return;
+    }
+    if (spec.kind === "spread-jam") {
+      let jammed = 0;
+      for (const row of this.viewJam) for (const v of row) if (v) jammed++;
+      k.drawText({
+        text: "Jam spread",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.22,
+        color: dark,
+        anchor: "center",
+      });
+      this.fitText(
+        `🍓 ${Math.min(jammed, spec.count)} / ${spec.count}`,
+        goalX + goalW / 2,
+        panelY + panelH * 0.68,
+        goalW * 0.9,
+        panelH * 0.36,
         accent,
       );
       return;

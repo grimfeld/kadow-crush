@@ -39,6 +39,8 @@ export class Board {
   jelly: number[][];
   /** Frosting Drip: whether jelly creeps onto new cells between Moves. */
   readonly jellySpreads: boolean;
+  /** Jam coating per cell (Spread-the-Jam). Parallel to `grid`. */
+  jam: boolean[][];
   /** Ingredients (burger parts) that have reached the bottom and left. */
   ingredientsCollected = 0;
   /** Which burger parts have been collected (parallel record for the HUD). */
@@ -100,6 +102,67 @@ export class Board {
     this.grid = this.generateSolvableGrid();
     this.jelly = this.buildJelly(cfg.jelly);
     this.jellySpreads = cfg.jelly?.spread ?? false;
+    this.jam = this.buildJam(cfg.jam ?? 0);
+  }
+
+  /** Seed jam on N random plain-candy cells (Spread-the-Jam). */
+  private buildJam(count: number): boolean[][] {
+    const g = Array.from({ length: this.rows }, () =>
+      Array<boolean>(this.cols).fill(false),
+    );
+    if (count <= 0) return g;
+    const cells: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell && cell.colour !== null && !this.immovable(cell)) cells.push({ row: r, col: c });
+      }
+    for (let i = cells.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [cells[i], cells[j]] = [cells[j], cells[i]];
+    }
+    for (let i = 0; i < Math.min(count, cells.length); i++)
+      g[cells[i].row][cells[i].col] = true;
+    return g;
+  }
+
+  /** Cells currently coated in jam (Spread-the-Jam objective progress). */
+  jammedCount(): number {
+    let n = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) if (this.jam[r][c]) n++;
+    return n;
+  }
+
+  /**
+   * Spread jam from the just-swapped cells: any swapped cell that is jammed
+   * coats its orthogonally-adjacent SAME-colour candies. Returns the Step, or
+   * null if nothing new was coated.
+   */
+  spreadJam(a: Pos, b: Pos): Step | null {
+    const newly: Pos[] = [];
+    for (const p of [a, b]) {
+      if (!this.jam[p.row]?.[p.col]) continue;
+      const colour = this.grid[p.row][p.col]?.colour;
+      if (colour == null) continue;
+      for (const [dr, dc] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nr = p.row + dr;
+        const nc = p.col + dc;
+        if (!this.inBounds(nr, nc)) continue;
+        const cell = this.grid[nr][nc];
+        if (cell && cell.colour === colour && !cell.special && !this.immovable(cell) &&
+            !this.jam[nr][nc]) {
+          this.jam[nr][nc] = true;
+          newly.push({ row: nr, col: nc });
+        }
+      }
+    }
+    return newly.length ? { kind: "jam-spread", cells: newly } : null;
   }
 
   /** Build the Jelly layer from the challenge's spec (pattern + layers). */

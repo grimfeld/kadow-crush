@@ -29,9 +29,12 @@ export class Board {
   grid: Grid;
   /** Remaining Jelly layers per cell (0 = no jelly). Parallel to `grid`. */
   jelly: number[][];
+  /** Ingredients that have reached the bottom and left the board. */
+  ingredientsCollected = 0;
   readonly rows: number;
   readonly cols: number;
   readonly colourCount: number;
+  private readonly ingredientCount: number;
   private nextId = 1;
 
   constructor(
@@ -41,6 +44,7 @@ export class Board {
     this.rows = cfg.rows;
     this.cols = cfg.cols;
     this.colourCount = cfg.colourCount;
+    this.ingredientCount = cfg.ingredients ?? 0;
     this.grid = this.generateSolvableGrid();
     const layers = cfg.jelly ?? 0;
     this.jelly = Array.from({ length: this.rows }, () =>
@@ -66,12 +70,32 @@ export class Board {
     return { id: this.nextId++, colour, special: null };
   }
 
+  private newIngredient(): Candy {
+    return { id: this.nextId++, colour: null, special: null, ingredient: true };
+  }
+
   /** Fill with random colours, no pre-existing match, at least one legal move. */
   private generateSolvableGrid(): Grid {
     for (;;) {
       const grid = this.fillNoMatches();
+      this.placeIngredients(grid);
+      // Ingredients are null-colour, so they can only break runs, never make
+      // one — the no-match guarantee still holds. Re-check the legal move.
       if (this.hasLegalMoveOn(grid)) return grid;
     }
+  }
+
+  /** Drop the configured Ingredients onto distinct top-row columns. */
+  private placeIngredients(grid: Grid) {
+    if (this.ingredientCount <= 0) return;
+    const cols = Array.from({ length: this.cols }, (_, c) => c);
+    // Fisher–Yates with the seeded rng, take the first N columns.
+    for (let i = cols.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [cols[i], cols[j]] = [cols[j], cols[i]];
+    }
+    const n = Math.min(this.ingredientCount, this.cols);
+    for (let i = 0; i < n; i++) grid[0][cols[i]] = this.newIngredient();
   }
 
   /** Greedy fill that never completes a line of 3 as it places candies. */
@@ -303,6 +327,9 @@ export class Board {
     for (const p of cells) {
       const candy = this.grid[p.row][p.col];
       if (!candy) continue;
+      // Ingredients are immune to clears/Specials — they only leave at the
+      // bottom. A Special blast simply passes over them.
+      if (candy.ingredient) continue;
       if (candy.colour !== null) cleared.push(candy.colour);
       outCells.push(p);
       ids.push(candy.id);
@@ -368,13 +395,47 @@ export class Board {
       // Settle the board if anything is empty — this also covers holes left by
       // a swapped Special's blast, which produce no colour run of their own.
       if (this.hasHoles()) {
-        this.applyGravity(steps);
-        this.spawnNew(steps);
+        this.settle(steps);
       } else if (runs.length === 0) {
         break; // stable: no matches and no holes
       }
       firstPass = false;
     }
+  }
+
+  /**
+   * Drop everything, collecting any Ingredient that lands on the bottom row,
+   * repeating until nothing more reaches the bottom, then refill from the top.
+   * Collecting an Ingredient frees a bottom cell, so a further drop may bring
+   * the next one down within the same settle.
+   */
+  private settle(steps: Step[]) {
+    for (;;) {
+      this.applyGravity(steps);
+      if (!this.collectBottomIngredients(steps)) break;
+    }
+    this.spawnNew(steps);
+  }
+
+  /** Collect Ingredients resting on the bottom row. Returns whether any left. */
+  private collectBottomIngredients(steps: Step[]): boolean {
+    const r = this.rows - 1;
+    const cells: Pos[] = [];
+    const ids: number[] = [];
+    for (let c = 0; c < this.cols; c++) {
+      const candy = this.grid[r][c];
+      if (candy?.ingredient) {
+        cells.push({ row: r, col: c });
+        ids.push(candy.id);
+        this.grid[r][c] = null;
+        this.ingredientsCollected++;
+      }
+    }
+    if (cells.length) {
+      steps.push({ kind: "ingredient-collect", cells, ids });
+      return true;
+    }
+    return false;
   }
 
   private hasHoles(): boolean {

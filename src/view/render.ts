@@ -4,7 +4,13 @@
 
 import type { KAPLAYCtx } from "kaplay";
 import type { Candy, Colour } from "../core/types.ts";
-import { BOMB_FILL, CELL_BG, COLOUR_THEMES } from "./theme.ts";
+import {
+  BOMB_FILL,
+  CELL_BG,
+  COLOUR_THEMES,
+  INGREDIENT_EMOJI,
+  INGREDIENT_FILL,
+} from "./theme.ts";
 
 export function drawCellBg(k: KAPLAYCtx, x: number, y: number, cell: number) {
   const s = cell * 0.92;
@@ -25,9 +31,30 @@ export function drawCandy(
   y: number,
   cell: number,
   scale = 1,
+  ingredient = false,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
+
+  // Ingredient: a warm tile with a fruit glyph, no colour/special behaviour.
+  if (ingredient) {
+    k.drawRect({
+      pos: k.vec2(x - half, y - half),
+      width: tile,
+      height: tile,
+      radius: tile * 0.24,
+      color: k.rgb(INGREDIENT_FILL[0], INGREDIENT_FILL[1], INGREDIENT_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.04), color: k.rgb(255, 255, 255) },
+    });
+    k.drawText({
+      text: INGREDIENT_EMOJI,
+      pos: k.vec2(x, y),
+      size: tile * 0.62,
+      anchor: "center",
+    });
+    return;
+  }
+
   const isBomb = special === "color-bomb";
 
   const fill = isBomb ? BOMB_FILL : COLOUR_THEMES[colour ?? 0].fill;

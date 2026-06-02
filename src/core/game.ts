@@ -68,9 +68,8 @@ export class Game {
         return this.score >= spec.target;
       case "clear-jelly":
         return this.board.jellyRemaining() === 0;
-      // Lands in a later phase; not yet reachable from the menu.
       case "collect-ingredients":
-        return false;
+        return this.board.ingredientsCollected >= spec.count;
     }
   }
 

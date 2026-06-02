@@ -25,6 +25,11 @@ export interface ChallengeConfig {
    * Omitted/0 = no jelly. A clear over a jellied cell removes one layer.
    */
   jelly?: number;
+  /**
+   * Number of Ingredient pieces placed at start (Collect-Ingredients
+   * challenges). They fall with gravity and are collected at the bottom row.
+   */
+  ingredients?: number;
 }
 
 /** The default Challenge — reproduces the original single level exactly. */
@@ -66,6 +71,17 @@ export const CHALLENGES: ChallengeConfig[] = [
     moves: 28,
     objective: { kind: "clear-jelly" },
     jelly: 1,
+  },
+  {
+    id: "orchard-drop",
+    name: "Orchard Drop",
+    blurb: "Bring the fruit down and off the bottom of the board.",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 24,
+    objective: { kind: "collect-ingredients", count: 3 },
+    ingredients: 3,
   },
 ];
 

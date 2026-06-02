@@ -52,6 +52,11 @@ export const JELLY_FILL: [number, number, number] = [120, 200, 245];
 // tint but a bomb gets a neutral dark base for contrast).
 export const BOMB_FILL: [number, number, number] = [70, 70, 90];
 
+// Ingredient piece (Collect-Ingredients challenges) — a warm tile + a fruit
+// glyph that stands apart from the matchable candies.
+export const INGREDIENT_FILL: [number, number, number] = [255, 196, 160];
+export const INGREDIENT_EMOJI = "🍒";
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

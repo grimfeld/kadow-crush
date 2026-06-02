@@ -9,9 +9,14 @@ export type SpecialType = "striped-row" | "striped-col" | "color-bomb";
 export interface Candy {
   /** Stable id so the view can track a Candy across falls/swaps. */
   id: number;
-  /** Colour, or null for a Color Bomb. */
+  /** Colour, or null for a Color Bomb or an Ingredient. */
   colour: Colour | null;
   special: SpecialType | null;
+  /**
+   * Ingredient piece: falls with gravity, never forms a Match, is immune to
+   * clears/Specials, and is collected when it reaches the bottom row.
+   */
+  ingredient?: boolean;
 }
 
 export interface Pos {
@@ -37,6 +42,8 @@ export type Step =
   | { kind: "spawn"; spawns: { id: number; colour: Colour; at: Pos }[] }
   // A clear reduced the Jelly layer on these cells (parallel `level` = remaining).
   | { kind: "jelly-clear"; cells: Pos[]; levels: number[] }
+  // Ingredients reached the bottom row and were collected (left the board).
+  | { kind: "ingredient-collect"; cells: Pos[]; ids: number[] }
   | { kind: "reshuffle"; layout: (Candy | null)[][] };
 
 export interface Objective {

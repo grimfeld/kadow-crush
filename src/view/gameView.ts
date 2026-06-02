@@ -29,6 +29,7 @@ interface Sprite {
   id: number;
   colour: Colour | null;
   special: Candy["special"];
+  ingredient: boolean;
   x: number;
   y: number;
   scale: number;
@@ -56,6 +57,9 @@ export class GameView {
   // board's own jelly is already at its final state mid-resolution — same rule
   // as viewGrid vs board.grid).
   private viewJelly: number[][] = [];
+  // Ingredients collected so far, mirrored for the HUD (driven by collect steps;
+  // resynced to the board at rest points).
+  private viewIngredients = 0;
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
@@ -118,6 +122,7 @@ export class GameView {
       Array<number | null>(this.cols).fill(null),
     );
     this.viewJelly = this.game.board.jelly.map((row) => row.slice());
+    this.viewIngredients = this.game.board.ingredientsCollected;
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -127,6 +132,7 @@ export class GameView {
           id: candy.id,
           colour: candy.colour,
           special: candy.special,
+          ingredient: !!candy.ingredient,
           x,
           y,
           scale: 1,
@@ -188,7 +194,11 @@ export class GameView {
       await this.playStep(step);
       // Pace the cascade: pause after a clear so the gap is visible, and after
       // a spawn (end of one cascade round) before the next round begins.
-      if (step.kind === "clear" || step.kind === "special-activate")
+      if (
+        step.kind === "clear" ||
+        step.kind === "special-activate" ||
+        step.kind === "ingredient-collect"
+      )
         await this.wait(AFTER_CLEAR_MS);
       else if (step.kind === "spawn") await this.wait(AFTER_ROUND_MS);
     }
@@ -274,6 +284,7 @@ export class GameView {
             id: sp.id,
             colour: sp.colour,
             special: null,
+            ingredient: false,
             x,
             y: startY,
             scale: 1,
@@ -290,6 +301,13 @@ export class GameView {
         step.cells.forEach((p, i) => {
           this.viewJelly[p.row][p.col] = step.levels[i];
         });
+        break;
+      }
+      case "ingredient-collect": {
+        // ingredients leave at the bottom — pop them out like a clear
+        playSound("special");
+        this.viewIngredients += step.cells.length;
+        await this.popIds(step.cells, step.ids);
         break;
       }
       case "reshuffle": {
@@ -530,7 +548,16 @@ export class GameView {
 
     // candies
     for (const s of this.sprites.values())
-      drawCandy(k, s.colour, s.special, s.x, s.y, this.layout.cell, s.scale);
+      drawCandy(
+        k,
+        s.colour,
+        s.special,
+        s.x,
+        s.y,
+        this.layout.cell,
+        s.scale,
+        s.ingredient,
+      );
 
     // particle bursts on top of candies
     this.particles.draw();
@@ -600,6 +627,23 @@ export class GameView {
     this.panel(goalX, panelY, goalW, panelH);
 
     const spec = this.game.cfg.objective;
+    if (spec.kind === "collect-ingredients") {
+      k.drawText({
+        text: "Fruit",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.24,
+        color: dark,
+        anchor: "center",
+      });
+      k.drawText({
+        text: `🍒 ${Math.min(this.viewIngredients, spec.count)}/${spec.count}`,
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.68),
+        size: panelH * 0.34,
+        color: accent,
+        anchor: "center",
+      });
+      return;
+    }
     if (spec.kind === "clear-jelly") {
       let left = 0;
       for (const row of this.viewJelly) for (const v of row) left += v;

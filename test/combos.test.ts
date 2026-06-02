@@ -98,6 +98,32 @@ describe("fish from a 2x2 square", () => {
   });
 });
 
+describe("fish targeting", () => {
+  it("a fish flies to the nearest objective, not the top-left", () => {
+    // jelly challenge with jelly at two corners; a fish near bottom-right must
+    // target the near corner. We read the fish-fly step's destination.
+    const jcfg: ChallengeConfig = {
+      ...cfg,
+      objective: { kind: "clear-jelly" },
+      jelly: { layers: 1, pattern: "checker" },
+    };
+    const b = new Board(makeRng(1), jcfg);
+    // clear all jelly except two cells: far (0,0) and near the fish (8,8)
+    for (let r = 0; r < b.rows; r++)
+      for (let c = 0; c < b.cols; c++) b.jelly[r][c] = 0;
+    b.jelly[0][0] = 1; // far corner
+    b.jelly[6][6] = 1; // near the fish's landing cell (8,7)
+    // plant a fish at (8,8) and a partner to swap it (fish lands at (8,7))
+    b.grid[8][8] = special(7000, "fish", 0);
+    b.grid[8][7] = { id: 7001, colour: 1, special: null };
+    const res = b.trySwap({ row: 8, col: 8 }, { row: 8, col: 7 });
+    const fly = res.steps.find((s) => s.kind === "fish-fly") as any;
+    expect(fly).toBeTruthy();
+    // nearest jellied cell to the fish is (6,6), not the far (0,0)
+    expect(fly.to).toEqual({ row: 6, col: 6 });
+  });
+});
+
 describe("special + special combos", () => {
   it("striped + striped clears a full row AND column (cross)", () => {
     const b = makeBoard(2);

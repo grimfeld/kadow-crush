@@ -922,17 +922,34 @@ export class Board {
    * an ingredient, else a deterministic-ish ordinary candy. Never the origin.
    */
   private fishTarget(origin: Pos): Pos {
+    // Track the NEAREST cell in each tier (by Manhattan distance from the fish),
+    // not just the first found — otherwise the top-left scan always wins.
     let jelly: Pos | null = null;
+    let jellyD = Infinity;
     let obstacle: Pos | null = null;
+    let obstacleD = Infinity;
     let candy: Pos | null = null;
+    let candyD = Infinity;
+    const dist = (r: number, c: number) =>
+      Math.abs(r - origin.row) + Math.abs(c - origin.col);
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         if (r === origin.row && c === origin.col) continue;
-        if (this.jelly[r][c] > 0 && !jelly) jelly = { row: r, col: c };
+        const d = dist(r, c);
+        if (this.jelly[r][c] > 0 && d < jellyD) {
+          jellyD = d;
+          jelly = { row: r, col: c };
+        }
         const cell = this.grid[r][c];
         if (!cell) continue;
-        if ((cell.box || cell.blocker) && !obstacle) obstacle = { row: r, col: c };
-        if (cell.colour !== null && !cell.special && !candy) candy = { row: r, col: c };
+        if ((cell.box || cell.blocker) && d < obstacleD) {
+          obstacleD = d;
+          obstacle = { row: r, col: c };
+        }
+        if (cell.colour !== null && !cell.special && d < candyD) {
+          candyD = d;
+          candy = { row: r, col: c };
+        }
       }
     return jelly ?? obstacle ?? candy ?? origin;
   }

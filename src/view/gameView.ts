@@ -58,6 +58,7 @@ const END_OVERLAY_DELAY = 0.9; // seconds to watch the final board before the mo
 const WIN_CELEBRATE_SECS = 2.6; // how long confetti keeps showering on a win
 const WIN_WAVE_GAP = 0.4; // gap between confetti rain waves
 const HINT_DELAY = 3.0; // seconds idle before the move hint appears
+const FISH_FLY_MS = 520; // fish travel time to its target (slow enough to follow)
 
 export class GameView {
   private mode: "menu" | "tutorial" | "play" = "menu";
@@ -97,6 +98,8 @@ export class GameView {
   private hint: [Pos, Pos] | null = null;
   // Cascade depth within the current Resolution, for escalating praise words.
   private cascadeDepth = 0;
+  // The fish sprite currently in flight, drawn last (on top of the board).
+  private flyingFishId: number | null = null;
   // Screen position of each goal chip (collect-colours), filled by the HUD each
   // frame so a cleared fruit can fly to its chip. Keyed by Colour.
   private goalChipPos = new Map<Colour, { x: number; y: number }>();
@@ -290,6 +293,7 @@ export class GameView {
     this.celebrateLeft = 0;
     this.nextWaveIn = 0;
     this.overlayPop = 0;
+    this.flyingFishId = null;
     this.sprites.clear();
     this.rebuildFromBoard();
     this.mode = "play";
@@ -612,21 +616,29 @@ export class GameView {
         break;
       }
       case "fish-fly": {
-        // a fish darts in an arc to its target before the pop that follows
+        // a fish lifts off, then arcs across to its target so the path reads
         playSound("fish");
         const s = this.sprites.get(step.id);
         if (s) {
+          this.flyingFishId = step.id; // draw it on top while in flight
           const { x, y } = cellCenter(this.layout, step.to.row, step.to.col);
           const sx = s.x;
           const sy = s.y;
+          // a brief lift/wiggle so the eye catches it before it travels
           await this.tween((t) => {
-            s.x = sx + (x - sx) * t;
-            s.y = sy + (y - sy) * t - Math.sin(t * Math.PI) * this.layout.cell * 0.8;
-            s.scale = 1 + 0.2 * Math.sin(t * Math.PI);
-          }, 220);
+            s.scale = 1 + 0.35 * t;
+          }, 150);
+          // the arc across to the target (slow enough to follow)
+          await this.tween((t) => {
+            const e = ease(t);
+            s.x = sx + (x - sx) * e;
+            s.y = sy + (y - sy) * e - Math.sin(t * Math.PI) * this.layout.cell * 1.0;
+            s.scale = 1.35 - 0.35 * t;
+          }, FISH_FLY_MS);
           s.scale = 1;
-          // leave a little splash where it lands
-          this.particles.burst(x, y, [90, 200, 255], 6);
+          this.flyingFishId = null;
+          // a splash where it lands
+          this.particles.burst(x, y, [90, 200, 255], 8);
         }
         break;
       }
@@ -1053,8 +1065,9 @@ export class GameView {
       }
     }
 
-    // candies (hinted tiles bounce up a touch)
-    for (const s of this.sprites.values()) {
+    // candies (hinted tiles bounce up a touch). The in-flight fish is skipped
+    // here and drawn last so it stays on top of every other tile.
+    const drawSprite = (s: Sprite) => {
       const dy = this.spriteInHint(s.id) ? -hintBounce : 0;
       drawCandy(
         k,
@@ -1071,6 +1084,12 @@ export class GameView {
         s.box,
         s.boxHits,
       );
+    };
+    for (const s of this.sprites.values())
+      if (s.id !== this.flyingFishId) drawSprite(s);
+    if (this.flyingFishId != null) {
+      const fish = this.sprites.get(this.flyingFishId);
+      if (fish) drawSprite(fish);
     }
 
     this.drawHud();

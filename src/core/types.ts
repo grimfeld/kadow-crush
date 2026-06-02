@@ -129,6 +129,16 @@ export type Step =
   | { kind: "case-hit"; cells: Pos[]; ids: number[]; hits: number[] }
   // Cased items freed (casing broken): they pop free and count toward the goal.
   | { kind: "item-free"; cells: Pos[]; ids: number[] }
+  // Sugar Crush: one leftover Move spent turning a Candy into a Striped Special.
+  // `movesLeft` is the count remaining AFTER this conversion (for the HUD tick).
+  | {
+      kind: "sugar-convert";
+      at: Pos;
+      id: number;
+      colour: Colour | null;
+      special: SpecialType;
+      movesLeft: number;
+    }
   // Frozen candies thawed by an adjacent Match (frost off; candy stays).
   | { kind: "thaw"; cells: Pos[]; ids: number[] }
   // Gift Boxes knocked by an adjacent Match (parallel `hits` = remaining).

@@ -16,26 +16,51 @@ const scoreCfg: ChallengeConfig = {
 };
 
 describe("Board.sugarCrush", () => {
-  it("turns up to N candies into stripes and detonates them (clears + scores)", () => {
+  it("converts up to N candies to stripes, detonates them, and leaves NO specials", () => {
     const b = new Board(makeRng(4), scoreCfg);
     const steps = b.sugarCrush(6, []);
-    const created = steps.filter((s) => s.kind === "special-create");
-    expect(created.length).toBeGreaterThan(0);
-    expect(created.length).toBeLessThanOrEqual(6);
-    expect(created.every((s: any) => /striped/.test(s.special))).toBe(true);
-    // it detonates them — special-activate steps follow
+    // each spent move emits a sugar-convert with the descending count
+    const converts = steps.filter((s) => s.kind === "sugar-convert");
+    expect(converts.length).toBeGreaterThan(0);
+    expect(converts.length).toBeLessThanOrEqual(6);
+    expect(converts.every((s: any) => /striped/.test(s.special))).toBe(true);
+    expect((converts[converts.length - 1] as any).movesLeft).toBe(0);
+    // they detonate — special-activate steps follow
     expect(steps.some((s) => s.kind === "special-activate")).toBe(true);
-    // board ends full + stable (resolve ran)
-    expect(steps.some((s) => s.kind === "spawn")).toBe(true);
+    // board ends full + stable, and crucially with ZERO specials remaining
     let filled = 0;
-    for (const row of b.grid) for (const cell of row) if (cell) filled++;
+    let specials = 0;
+    for (const row of b.grid)
+      for (const cell of row) {
+        if (cell) filled++;
+        if (cell?.special) specials++;
+      }
     expect(filled).toBe(8 * 7);
+    expect(specials).toBe(0);
   });
 
   it("does nothing meaningful with zero moves", () => {
     const b = new Board(makeRng(4), scoreCfg);
     const steps = b.sugarCrush(0, []);
-    expect(steps.filter((s) => s.kind === "special-create").length).toBe(0);
+    expect(steps.filter((s) => s.kind === "sugar-convert").length).toBe(0);
+  });
+
+  it("leaves zero specials across many seeds and move counts", () => {
+    for (let seed = 1; seed <= 30; seed++) {
+      for (const moves of [3, 8, 15]) {
+        const b = new Board(makeRng(seed), scoreCfg);
+        b.sugarCrush(moves, []);
+        let specials = 0;
+        let filled = 0;
+        for (const row of b.grid)
+          for (const cell of row) {
+            if (cell) filled++;
+            if (cell?.special) specials++;
+          }
+        expect(specials).toBe(0);
+        expect(filled).toBe(8 * 7);
+      }
+    }
   });
 });
 

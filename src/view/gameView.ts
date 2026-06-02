@@ -64,6 +64,7 @@ const WIN_CELEBRATE_SECS = 2.6; // how long confetti keeps showering on a win
 const WIN_WAVE_GAP = 0.4; // gap between confetti rain waves
 const HINT_DELAY = 3.0; // seconds idle before the move hint appears
 const FISH_FLY_MS = 520; // fish travel time to its target (slow enough to follow)
+const SUGAR_CONVERT_MS = 70; // quick pop per candy converted in the Sugar Crush
 
 export class GameView {
   private mode: "menu" | "tutorial" | "play" = "menu";
@@ -91,6 +92,9 @@ export class GameView {
   private viewCollected = 0;
   // Cased items freed so far, mirrored for the HUD (Free-It).
   private viewFreed = 0;
+  // During a Sugar Crush, the leftover-move count shown ticking down in the HUD
+  // (-1 = not in a finale; the real game.movesLeft is already 0).
+  private finaleMoves = -1;
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
@@ -307,6 +311,7 @@ export class GameView {
     this.nextWaveIn = 0;
     this.overlayPop = 0;
     this.flyingFishId = null;
+    this.finaleMoves = -1;
     this.sprites.clear();
     this.rebuildFromBoard();
     this.mode = "play";
@@ -420,15 +425,17 @@ export class GameView {
     this.cascadeDepth = 0;
     for (const step of steps) {
       await this.playStep(step);
+      // The Sugar Crush finale is long (many stripes + sweeps), so pace it much
+      // faster and skip the per-round praise spam.
+      const fast = this.finaleMoves >= 0;
       // Pace the cascade: pause after a clear so the gap is visible, and after
       // a spawn (end of one cascade round) before the next round begins.
       if (step.kind === "clear" || step.kind === "special-activate")
-        await this.wait(AFTER_CLEAR_MS);
+        await this.wait(fast ? AFTER_CLEAR_MS * 0.3 : AFTER_CLEAR_MS);
       else if (step.kind === "spawn") {
-        // each spawn ends one cascade round; praise escalating chains
         this.cascadeDepth++;
-        if (this.cascadeDepth >= 2) this.praiseCascade(this.cascadeDepth);
-        await this.wait(AFTER_ROUND_MS);
+        if (!fast && this.cascadeDepth >= 2) this.praiseCascade(this.cascadeDepth);
+        await this.wait(fast ? AFTER_ROUND_MS * 0.3 : AFTER_ROUND_MS);
       }
     }
     // Final correction: align sprites to the view's own grid. By now viewGrid
@@ -493,6 +500,23 @@ export class GameView {
           s.colour = step.colour;
           this.setAt(step.at, step.id);
           await this.pulse(step.id);
+        }
+        break;
+      }
+      case "sugar-convert": {
+        // a leftover move spent: a candy becomes striped, HUD moves tick down
+        playSound("striped");
+        this.finaleMoves = step.movesLeft;
+        const s = this.sprites.get(step.id);
+        if (s) {
+          s.special = step.special;
+          s.colour = step.colour;
+          this.setAt(step.at, step.id);
+          // quick pop — the whole conversion sweep should feel snappy
+          await this.tween((t) => {
+            s.scale = 1 + Math.sin(t * Math.PI) * 0.3;
+          }, SUGAR_CONVERT_MS);
+          s.scale = 1;
         }
         break;
       }
@@ -976,8 +1000,11 @@ export class GameView {
       const y = this.layout.originY + this.layout.boardH * 0.4;
       this.effects.word("SUGAR CRUSH!", x, y, [240, 80, 150], 52);
       playSound("win");
+      // HUD shows the leftover-move count ticking down as candies convert
+      this.finaleMoves = steps.filter((s) => s.kind === "sugar-convert").length;
     }
     await this.playSteps(steps);
+    this.finaleMoves = -1;
     // reshuffle if the resulting board is deadlocked
     if (this.game.outcome() === "playing") {
       const rs = this.game.reshuffleIfStuck();
@@ -1270,6 +1297,8 @@ export class GameView {
       counterLabel = "Time";
       counterValue = `${remaining}s`;
     }
+    // During a Sugar Crush, show the leftover-move count ticking down to 0.
+    if (this.finaleMoves >= 0) counterValue = `${this.finaleMoves}`;
     k.drawText({
       text: counterLabel,
       pos: k.vec2(left + movesW / 2, panelY + panelH * 0.3),

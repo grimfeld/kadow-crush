@@ -882,18 +882,21 @@ export class Board {
       [plain[i], plain[j]] = [plain[j], plain[i]];
     }
     const picks = plain.slice(0, Math.min(moves, plain.length));
-    // turn each into a striped (alternating row/col for a varied finale)
+    // turn each into a striped (alternating row/col). Emit a sugar-convert per
+    // pick carrying the remaining-move count, so the HUD ticks down as each
+    // candy is created.
     for (let i = 0; i < picks.length; i++) {
       const p = picks[i];
       const cell = this.grid[p.row][p.col]!;
       const special: SpecialType = i % 2 === 0 ? "striped-row" : "striped-col";
       cell.special = special;
       steps.push({
-        kind: "special-create",
+        kind: "sugar-convert",
         at: p,
         id: cell.id,
         colour: cell.colour,
         special,
+        movesLeft: picks.length - 1 - i,
       });
     }
     // detonate them all (chains naturally via blast)
@@ -904,7 +907,28 @@ export class Board {
       }
     }
     // settle the board so the finale ends full and stable
-    this.resolve(steps, { swapA: picks[0] ?? { row: 0, col: 0 }, swapB: picks[0] ?? { row: 0, col: 0 } }, cleared);
+    const at = picks[0] ?? { row: 0, col: 0 };
+    this.resolve(steps, { swapA: at, swapB: at }, cleared);
+    // Sweep: the cascade may have CREATED new Specials — detonate every Special
+    // left on the board and re-settle, repeating until none remain, so the
+    // finale ends with zero Specials.
+    for (let guard = 0; guard < 12; guard++) {
+      const live: { pos: Pos; special: SpecialType }[] = [];
+      for (let r = 0; r < this.rows; r++)
+        for (let c = 0; c < this.cols; c++) {
+          const cell = this.grid[r][c];
+          if (cell?.special) live.push({ pos: { row: r, col: c }, special: cell.special });
+        }
+      if (live.length === 0) break;
+      this.firing.clear();
+      for (const s of live) {
+        const cell = this.grid[s.pos.row]?.[s.pos.col];
+        if (cell?.special && !this.firing.has(cell.id)) {
+          this.detonate(s.pos, cell.special, {}, steps, cleared);
+        }
+      }
+      this.resolve(steps, { swapA: at, swapB: at }, cleared);
+    }
     return steps;
   }
 

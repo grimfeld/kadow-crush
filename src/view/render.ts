@@ -46,6 +46,9 @@ export function drawCandy(
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
+  // Emoji tint. Kaplay multiplies a drawText's `color` into the glyph; without
+  // an explicit white the prior fill/text colour bleeds in and darkens it.
+  const white = k.rgb(255, 255, 255);
 
   // Gift Box: a crate that needs `boxHits` more adjacent matches to crack open.
   if (box) {
@@ -57,7 +60,7 @@ export function drawCandy(
       color: k.rgb(BOX_FILL[0], BOX_FILL[1], BOX_FILL[2]),
       outline: { width: Math.max(1, tile * 0.06), color: k.rgb(BOX_OUTLINE[0], BOX_OUTLINE[1], BOX_OUTLINE[2]) },
     });
-    k.drawText({ text: "🎁", pos: k.vec2(x, y - tile * 0.06), size: tile * 0.5, anchor: "center" });
+    k.drawText({ text: "🎁", pos: k.vec2(x, y - tile * 0.06), size: tile * 0.5, anchor: "center", color: white });
     // hit pips along the bottom — how many knocks remain to crack it open
     if (boxHits > 0) {
       const pipR = tile * 0.07;
@@ -89,6 +92,7 @@ export function drawCandy(
       pos: k.vec2(x, y),
       size: tile * 0.6,
       anchor: "center",
+      color: white,
     });
     return;
   }
@@ -108,6 +112,7 @@ export function drawCandy(
       pos: k.vec2(x, y),
       size: tile * 0.62,
       anchor: "center",
+      color: white,
     });
     return;
   }
@@ -137,6 +142,7 @@ export function drawCandy(
         pos: k.vec2(x, y),
         size: tile * 0.62,
         anchor: "center",
+        color: white,
       });
     }
     if (special === "striped-row" || special === "striped-col") {
@@ -156,7 +162,7 @@ export function drawCandy(
       opacity: 0.6,
       outline: { width: Math.max(2, tile * 0.07), color: k.rgb(FROST_OUTLINE[0], FROST_OUTLINE[1], FROST_OUTLINE[2]) },
     });
-    k.drawText({ text: "❄️", pos: k.vec2(x, y), size: tile * 0.5, anchor: "center" });
+    k.drawText({ text: "❄️", pos: k.vec2(x, y), size: tile * 0.5, anchor: "center", color: white });
   }
 }
 
@@ -199,7 +205,7 @@ function drawBombRing(k: KAPLAYCtx, x: number, y: number, r: number) {
       color: hsv(k, hue),
     });
   }
-  k.drawText({ text: "💣", pos: k.vec2(x, y), size: r * 0.9, anchor: "center" });
+  k.drawText({ text: "💣", pos: k.vec2(x, y), size: r * 0.9, anchor: "center", color: k.rgb(255, 255, 255) });
 }
 
 function hsv(k: KAPLAYCtx, h: number) {

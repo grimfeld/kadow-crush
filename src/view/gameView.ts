@@ -100,6 +100,13 @@ export class GameView {
     return (Math.random() * 0xffffffff) >>> 0;
   }
 
+  // White, used as the emoji tint. Kaplay multiplies a drawText's `color` into
+  // the glyph; omitting it lets a dark default bleed in and darkens the emoji,
+  // so emoji-only labels pass white explicitly to render their true colours.
+  private get white() {
+    return this.k.rgb(255, 255, 255);
+  }
+
   // Board dims of the active Challenge (ADR-0002 — no global constants).
   private get rows() {
     return this.game.board.rows;
@@ -861,6 +868,7 @@ export class GameView {
           pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.66),
           size: panelH * 0.42,
           anchor: "center",
+          color: this.white,
         });
       } else {
         // a row of parts; collected ones are solid, the rest faint
@@ -871,6 +879,7 @@ export class GameView {
             pos: k.vec2(goalX + slot * (i + 1), panelY + panelH * 0.64),
             size: panelH * 0.34,
             anchor: "center",
+            color: this.white,
             opacity: this.viewBurger.has(i) ? 1 : 0.22,
           });
         }
@@ -961,6 +970,7 @@ export class GameView {
           pos: k.vec2(cx - panelH * 0.18, cy),
           size: emojiSize,
           anchor: "center",
+          color: this.white,
         });
         k.drawText({
           text: `${got}/${obj.quota}`,
@@ -976,6 +986,7 @@ export class GameView {
           pos: k.vec2(cx, cy - panelH * 0.14),
           size: emojiSize,
           anchor: "center",
+          color: this.white,
         });
         k.drawText({
           text: `${got}/${obj.quota}`,

@@ -37,6 +37,8 @@ interface Sprite {
   ingredientKind: number;
   blocker: boolean;
   frozen: boolean;
+  box: boolean;
+  boxHits: number;
   x: number;
   y: number;
   scale: number;
@@ -148,6 +150,8 @@ export class GameView {
           ingredientKind: candy.ingredientKind ?? 0,
           blocker: !!candy.blocker,
           frozen: !!candy.frozen,
+          box: !!candy.box,
+          boxHits: candy.boxHits ?? 0,
           x,
           y,
           scale: 1,
@@ -299,6 +303,8 @@ export class GameView {
             ingredientKind: 0,
             blocker: false,
             frozen: false,
+            box: false,
+            boxHits: 0,
             x,
             y: startY,
             scale: 1,
@@ -337,6 +343,32 @@ export class GameView {
           const s = this.sprites.get(id);
           if (s) s.frozen = false;
         }
+        await Promise.all(step.ids.map((id) => this.pulse(id)));
+        break;
+      }
+      case "box-hit": {
+        // a knock — drop a pip and give the crate a little shake-pulse
+        playSound("clear");
+        step.ids.forEach((id, i) => {
+          const s = this.sprites.get(id);
+          if (s) s.boxHits = step.hits[i];
+        });
+        await Promise.all(step.ids.map((id) => this.pulse(id)));
+        break;
+      }
+      case "box-open": {
+        // crate cracks: it becomes a burger-part Ingredient (an ingredient-
+        // collect step will then drop it off the bottom)
+        playSound("special");
+        step.ids.forEach((id, i) => {
+          const s = this.sprites.get(id);
+          if (s) {
+            s.box = false;
+            s.boxHits = 0;
+            s.ingredient = true;
+            s.ingredientKind = step.kinds[i];
+          }
+        });
         await Promise.all(step.ids.map((id) => this.pulse(id)));
         break;
       }
@@ -649,6 +681,8 @@ export class GameView {
         s.blocker,
         s.ingredientKind,
         s.frozen,
+        s.box,
+        s.boxHits,
       );
 
     // particle bursts on top of candies

@@ -70,6 +70,10 @@ export const BLOCKER_EMOJI = "🧱";
 export const FROST_FILL: [number, number, number] = [200, 232, 255];
 export const FROST_OUTLINE: [number, number, number] = [120, 190, 240];
 
+// Gift Box crate (Gift Box challenge) — a warm parcel tile with hit pips.
+export const BOX_FILL: [number, number, number] = [246, 211, 140];
+export const BOX_OUTLINE: [number, number, number] = [196, 142, 60];
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

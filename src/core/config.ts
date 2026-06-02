@@ -62,6 +62,14 @@ export interface ChallengeConfig {
    * over — unmatchable until an adjacent Match thaws it into a normal candy.
    */
   frozen?: number;
+  /**
+   * Number of Gift Boxes (Gift Box challenge). Each crate holds a distinct
+   * burger part and cracks open after `boxHits` adjacent Matches; collect every
+   * freed part (via a collect-ingredients objective) to win.
+   */
+  boxes?: number;
+  /** Adjacent Matches needed to crack each Gift Box (default 2). */
+  boxHits?: number;
 }
 
 /** The default Challenge — the gentle introduction. */
@@ -284,6 +292,26 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Swap as fast as you like — there's no move limit.",
       "Every candy you pop adds to your score.",
       "Win: reach the points shown before time runs out.",
+    ],
+  },
+  {
+    id: "gift-boxes",
+    name: "Gift Boxes",
+    blurb: "Crack open the parcels to free the burger parts inside.",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 30,
+    objective: { kind: "collect-ingredients", count: 3 },
+    boxes: 3,
+    boxHits: 2,
+    tutorial: [
+      "Three gift boxes 🎁 sit along the floor.",
+      "Pop a match right next to a box to knock it.",
+      "The dots show how many more knocks it needs.",
+      "Knock it enough and it pops open into a burger part!",
+      "Win: open all 3 boxes before your moves run out.",
     ],
   },
   {

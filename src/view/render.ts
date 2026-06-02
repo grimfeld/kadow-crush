@@ -8,6 +8,8 @@ import {
   BLOCKER_EMOJI,
   BLOCKER_FILL,
   BOMB_FILL,
+  BOX_FILL,
+  BOX_OUTLINE,
   BURGER_PARTS,
   CELL_BG,
   COLOUR_THEMES,
@@ -39,9 +41,38 @@ export function drawCandy(
   blocker = false,
   ingredientKind = 0,
   frozen = false,
+  box = false,
+  boxHits = 0,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
+
+  // Gift Box: a crate that needs `boxHits` more adjacent matches to crack open.
+  if (box) {
+    k.drawRect({
+      pos: k.vec2(x - half, y - half),
+      width: tile,
+      height: tile,
+      radius: tile * 0.18,
+      color: k.rgb(BOX_FILL[0], BOX_FILL[1], BOX_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.06), color: k.rgb(BOX_OUTLINE[0], BOX_OUTLINE[1], BOX_OUTLINE[2]) },
+    });
+    k.drawText({ text: "🎁", pos: k.vec2(x, y - tile * 0.06), size: tile * 0.5, anchor: "center" });
+    // hit pips along the bottom — how many knocks remain to crack it open
+    if (boxHits > 0) {
+      const pipR = tile * 0.07;
+      const gap = pipR * 2.6;
+      const startX = x - (gap * (boxHits - 1)) / 2;
+      for (let i = 0; i < boxHits; i++) {
+        k.drawCircle({
+          pos: k.vec2(startX + i * gap, y + half * 0.6),
+          radius: pipR,
+          color: k.rgb(BOX_OUTLINE[0], BOX_OUTLINE[1], BOX_OUTLINE[2]),
+        });
+      }
+    }
+    return;
+  }
 
   // Blocker: a dull immovable stone tile.
   if (blocker) {

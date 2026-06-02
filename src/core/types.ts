@@ -32,6 +32,16 @@ export interface Candy {
    * candy. Unlike a Blocker it still falls with gravity.
    */
   frozen?: boolean;
+  /**
+   * Gift Box (Gift Box challenge): an immovable crate that blocks gravity like a
+   * Blocker. Each Match in an orthogonally-adjacent cell knocks one off
+   * `boxHits`; when it reaches 0 the crate cracks open into a falling Ingredient
+   * (`ingredientKind`), which is then collected at the bottom like any burger
+   * part.
+   */
+  box?: boolean;
+  /** Remaining adjacent-Matches needed to crack a Gift Box open. */
+  boxHits?: number;
 }
 
 export interface Pos {
@@ -64,6 +74,10 @@ export type Step =
   | { kind: "blocker-clear"; cells: Pos[]; ids: number[] }
   // Frozen candies thawed by an adjacent Match (frost off; candy stays).
   | { kind: "thaw"; cells: Pos[]; ids: number[] }
+  // Gift Boxes knocked by an adjacent Match (parallel `hits` = remaining).
+  | { kind: "box-hit"; cells: Pos[]; ids: number[]; hits: number[] }
+  // Gift Boxes cracked open into Ingredients (`kinds` = burger part each holds).
+  | { kind: "box-open"; cells: Pos[]; ids: number[]; kinds: number[] }
   | { kind: "reshuffle"; layout: (Candy | null)[][] };
 
 export interface Objective {

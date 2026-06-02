@@ -43,6 +43,8 @@ export class Board {
   private readonly ingredientCount: number;
   private readonly blockerCount: number;
   private readonly frozenCount: number;
+  private readonly boxCount: number;
+  private readonly boxHits: number;
   private nextId = 1;
 
   constructor(
@@ -55,6 +57,8 @@ export class Board {
     this.ingredientCount = cfg.ingredients ?? 0;
     this.blockerCount = cfg.blockers ?? 0;
     this.frozenCount = cfg.frozen ?? 0;
+    this.boxCount = cfg.boxes ?? 0;
+    this.boxHits = cfg.boxHits ?? 2;
     this.grid = this.generateSolvableGrid();
     this.jelly = this.buildJelly(cfg.jelly);
   }
@@ -98,9 +102,15 @@ export class Board {
     return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
   }
 
-  /** A candy that cannot be swapped by the player (Blocker or Frozen). */
+  /** A candy that cannot be swapped by the player (Blocker, Frozen, or a sealed
+   *  Gift Box). */
   private immovable(cell: Candy | null): boolean {
-    return !!cell && (!!cell.blocker || !!cell.frozen);
+    return !!cell && (!!cell.blocker || !!cell.frozen || !!cell.box);
+  }
+
+  /** A candy that acts as a gravity wall: candies stack on it, none fall past. */
+  private isWall(cell: Candy | null): boolean {
+    return !!cell && (!!cell.blocker || !!cell.box);
   }
 
   // ---- generation ---------------------------------------------------------
@@ -127,11 +137,23 @@ export class Board {
     return { id: this.nextId++, colour, special: null, frozen: true };
   }
 
+  private newBox(kind: number): Candy {
+    return {
+      id: this.nextId++,
+      colour: null,
+      special: null,
+      box: true,
+      boxHits: this.boxHits,
+      ingredientKind: kind,
+    };
+  }
+
   /** Fill with random colours, no pre-existing match, at least one legal move. */
   private generateSolvableGrid(): Grid {
     for (;;) {
       const grid = this.fillNoMatches();
       this.placeBlockers(grid);
+      this.placeBoxes(grid);
       this.placeIngredients(grid);
       this.placeFrozen(grid);
       // Ingredients/Blockers are null-colour, so they can only break runs, never
@@ -179,6 +201,23 @@ export class Board {
     }
     const n = Math.min(this.blockerCount, this.cols);
     for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newBlocker();
+  }
+
+  /** Place Gift Boxes on distinct bottom-row columns (so a cracked box becomes
+   *  an Ingredient already at the bottom, collected on the next settle, and the
+   *  sealed crate never traps an unfillable hole above it). */
+  private placeBoxes(grid: Grid) {
+    if (this.boxCount <= 0) return;
+    const r = this.rows - 1;
+    const cols: number[] = [];
+    for (let c = 0; c < this.cols; c++) if (!grid[r][c]?.blocker) cols.push(c);
+    for (let i = cols.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [cols[i], cols[j]] = [cols[j], cols[i]];
+    }
+    const n = Math.min(this.boxCount, cols.length);
+    // each box holds a distinct burger part (kind 0..n-1)
+    for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newBox(i);
   }
 
   /** Drop the configured Ingredients onto distinct top-row columns. */
@@ -384,6 +423,7 @@ export class Board {
       this.pushJelly(steps, jelly);
       this.clearAdjacentBlockers(cells, steps);
       this.thawAdjacentFrozen(cells, steps);
+      this.hitAdjacentBoxes(cells, steps);
     };
     // Snapshot which positions hold specials before clearing.
     const aSpecial = ca?.special != null;
@@ -515,6 +555,58 @@ export class Board {
     if (cells.length) steps.push({ kind: "thaw", cells, ids });
   }
 
+  /**
+   * Knock Gift Boxes orthogonally adjacent to the just-cleared cells. Each loses
+   * one hit; a box at zero cracks open into a falling Ingredient. Emits a
+   * box-hit step for the survivors and a box-open step for the cracked ones (the
+   * latter become Ingredients the next settle collects at the bottom).
+   */
+  private hitAdjacentBoxes(clearedCells: Pos[], steps: Step[]) {
+    if (this.boxCount <= 0) return;
+    const seen = new Set<string>();
+    const hitCells: Pos[] = [];
+    const hitIds: number[] = [];
+    const hitLeft: number[] = [];
+    const openCells: Pos[] = [];
+    const openIds: number[] = [];
+    const openKinds: number[] = [];
+    for (const p of clearedCells) {
+      for (const [dr, dc] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nr = p.row + dr;
+        const nc = p.col + dc;
+        if (!this.inBounds(nr, nc)) continue;
+        const cell = this.grid[nr][nc];
+        const k = `${nr},${nc}`;
+        if (cell?.box && !seen.has(k)) {
+          seen.add(k);
+          cell.boxHits = (cell.boxHits ?? 1) - 1;
+          if (cell.boxHits <= 0) {
+            // crack open: the crate becomes a falling Ingredient (burger part)
+            cell.box = false;
+            cell.boxHits = undefined;
+            cell.ingredient = true;
+            openCells.push({ row: nr, col: nc });
+            openIds.push(cell.id);
+            openKinds.push(cell.ingredientKind ?? 0);
+          } else {
+            hitCells.push({ row: nr, col: nc });
+            hitIds.push(cell.id);
+            hitLeft.push(cell.boxHits);
+          }
+        }
+      }
+    }
+    if (hitCells.length)
+      steps.push({ kind: "box-hit", cells: hitCells, ids: hitIds, hits: hitLeft });
+    if (openCells.length)
+      steps.push({ kind: "box-open", cells: openCells, ids: openIds, kinds: openKinds });
+  }
+
   /** Resolve cascades until the board is stable. Appends Steps. */
   private resolve(steps: Step[], swap: { swapA: Pos; swapB: Pos }, cleared: Colour[]) {
     let firstPass = true;
@@ -542,6 +634,7 @@ export class Board {
         this.pushJelly(steps, cleared2.jelly);
         this.clearAdjacentBlockers(cleared2.cells, steps);
         this.thawAdjacentFrozen(cleared2.cells, steps);
+        this.hitAdjacentBoxes(cleared2.cells, steps);
 
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {
@@ -652,7 +745,7 @@ export class Board {
       for (let r = this.rows - 1; r >= 0; r--) {
         const candy = this.grid[r][c];
         if (!candy) continue;
-        if (candy.blocker) {
+        if (this.isWall(candy)) {
           // wall: stays at r; the next segment fills above it
           write = r - 1;
           continue;
@@ -678,7 +771,7 @@ export class Board {
     for (let c = 0; c < this.cols; c++) {
       for (let r = 0; r < this.rows; r++) {
         const cell = this.grid[r][c];
-        if (cell?.blocker) break; // sealed below here
+        if (this.isWall(cell)) break; // sealed below here
         if (cell !== null) continue;
         const colour = this.rng.int(this.colourCount);
         const candy = this.newCandy(colour);
@@ -702,7 +795,8 @@ export class Board {
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
-        if (!cell || cell.blocker || cell.ingredient || cell.frozen) continue;
+        if (!cell || cell.blocker || cell.ingredient || cell.frozen || cell.box)
+          continue;
         movable.push(cell);
         slots.push({ row: r, col: c });
       }
@@ -716,7 +810,9 @@ export class Board {
       // Start from the fixed occupants, then drop the shuffled candies in.
       const grid: Grid = this.grid.map((row) =>
         row.map((cell) =>
-          cell && (cell.blocker || cell.ingredient || cell.frozen) ? cell : null,
+          cell && (cell.blocker || cell.ingredient || cell.frozen || cell.box)
+            ? cell
+            : null,
         ),
       );
       slots.forEach((p, k) => (grid[p.row][p.col] = movable[k]));

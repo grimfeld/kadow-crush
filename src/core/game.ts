@@ -90,6 +90,8 @@ export class Game {
         return this.board.chocolateRemaining() === 0;
       case "spread-jam":
         return this.board.jammedCount() >= spec.count;
+      case "clear-blockers":
+        return this.board.blockersRemaining() === 0;
     }
   }
 

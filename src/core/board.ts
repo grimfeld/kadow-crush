@@ -373,27 +373,20 @@ export class Board {
   }
 
   /**
-   * Place a block of chocolate in the MIDDLE of the board, growing outward from
-   * the centre cell in a roughly square spiral. Centred (not floor-anchored) so
-   * it reads as a central mass surrounded by playable candies; the surrounding
-   * ring is always matchable, so a column is never permanently blocked, and it
-   * still spreads outward during play.
+   * Place a block of chocolate anchored to the bottom-left, filling the floor
+   * upward. Bottom-anchored so no candy is ever trapped beneath a chocolate
+   * wall (a column fills down to its first chocolate). It still spreads upward
+   * during play.
    */
   private placeChocolate(grid: Grid) {
     if (this.chocolateCount <= 0) return;
-    const cr = Math.floor((this.rows - 1) / 2);
-    const cc = Math.floor((this.cols - 1) / 2);
-    // all cells ordered by distance from the centre, then fill the nearest N
-    const order: Pos[] = [];
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) order.push({ row: r, col: c });
-    order.sort(
-      (a, b) =>
-        Math.abs(a.row - cr) + Math.abs(a.col - cc) -
-        (Math.abs(b.row - cr) + Math.abs(b.col - cc)),
-    );
-    const n = Math.min(this.chocolateCount, order.length);
-    for (let i = 0; i < n; i++) grid[order[i].row][order[i].col] = this.newChocolate();
+    let left = Math.min(this.chocolateCount, this.rows * this.cols);
+    // fill from the bottom row up, left to right within each row
+    for (let r = this.rows - 1; r >= 0 && left > 0; r--)
+      for (let c = 0; c < this.cols && left > 0; c++) {
+        grid[r][c] = this.newChocolate();
+        left--;
+      }
   }
 
   /** Place cased (trapped) items on distinct free bottom-row columns. */
@@ -1388,6 +1381,14 @@ export class Board {
       }
     }
     if (cells.length) steps.push({ kind: "thaw", cells, ids });
+  }
+
+  /** Total Blocker tiles on the board (0 ⇒ Clear-the-Blockers objective met). */
+  blockersRemaining(): number {
+    let n = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) if (this.grid[r][c]?.blocker) n++;
+    return n;
   }
 
   /** Total chocolate tiles on the board (0 ⇒ Clear-Chocolate objective met). */

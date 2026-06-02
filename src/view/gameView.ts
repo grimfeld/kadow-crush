@@ -100,6 +100,8 @@ export class GameView {
   private viewFreed = 0;
   // Chocolate tiles on the board, mirrored for the HUD (Clear-the-Chocolate).
   private viewChoco = 0;
+  // Blocker tiles on the board, mirrored for the HUD (Clear-the-Blockers).
+  private viewBlockers = 0;
   // During a Sugar Crush, the leftover-move count shown ticking down in the HUD
   // (-1 = not in a finale; the real game.movesLeft is already 0).
   private finaleMoves = -1;
@@ -365,6 +367,7 @@ export class GameView {
     this.viewCollected = this.game.board.ingredientsCollected;
     this.viewFreed = this.game.board.itemsFreed;
     this.viewChoco = this.game.board.chocolateRemaining();
+    this.viewBlockers = this.game.board.blockersRemaining();
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -648,6 +651,7 @@ export class GameView {
       case "blocker-clear": {
         // an adjacent match broke these blockers — pop them out
         playSound("clear");
+        this.viewBlockers = Math.max(0, this.viewBlockers - step.cells.length);
         await this.popIds(step.cells, step.ids);
         break;
       }
@@ -1581,6 +1585,24 @@ export class GameView {
       });
       this.fitText(
         `🍫 ${this.viewChoco}`,
+        goalX + goalW / 2,
+        panelY + panelH * 0.68,
+        goalW * 0.9,
+        panelH * 0.38,
+        accent,
+      );
+      return;
+    }
+    if (spec.kind === "clear-blockers") {
+      k.drawText({
+        text: "Bricks left",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.22,
+        color: dark,
+        anchor: "center",
+      });
+      this.fitText(
+        `🧱 ${this.viewBlockers}`,
         goalX + goalW / 2,
         panelY + panelH * 0.68,
         goalW * 0.9,

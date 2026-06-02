@@ -94,6 +94,7 @@ The Objective generalises beyond colour-collection. Each Challenge has exactly o
 - **Free It** — break the casing off every trapped (Cased) item before moves run out.
 - **Clear the Chocolate** — remove every Chocolate tile before moves run out.
 - **Spread the Jam** — get Jam onto at least `count` cells before moves run out.
+- **Clear the Blockers** — smash every Blocker tile before moves run out (layered Blockers take multiple hits).
 
 ### Score
 A running point total for a Challenge whose Objective is Score. Points accrue as Candies clear.

@@ -188,7 +188,9 @@ export type ObjectiveSpec =
   // Clear-the-Chocolate: remove every chocolate tile before moves run out.
   | { kind: "clear-chocolate" }
   // Spread-the-Jam: get jam onto at least `count` cells before moves run out.
-  | { kind: "spread-jam"; count: number };
+  | { kind: "spread-jam"; count: number }
+  // Clear-the-Blockers: remove every Blocker tile before moves run out.
+  | { kind: "clear-blockers" };
 
 export type ObjectiveKind = ObjectiveSpec["kind"];
 

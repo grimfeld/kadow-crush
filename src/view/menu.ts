@@ -57,6 +57,8 @@ export function objectiveSummary(cfg: ChallengeConfig): string {
       return "Clear all the chocolate";
     case "spread-jam":
       return `Spread jam to ${o.count} tiles`;
+    case "clear-blockers":
+      return "Smash all the bricks";
   }
 }
 

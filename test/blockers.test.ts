@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Board } from "../src/core/board.ts";
 import type { ChallengeConfig } from "../src/core/config.ts";
+import { Game } from "../src/core/game.ts";
 import { makeRng } from "../src/core/rng.ts";
 import type { Candy } from "../src/core/types.ts";
 
@@ -109,5 +110,45 @@ describe("blockers", () => {
   it("stays solvable with blockers across many seeds", () => {
     for (let seed = 1; seed <= 40; seed++)
       expect(new Board(makeRng(seed), blockerCfg).hasLegalMove()).toBe(true);
+  });
+});
+
+describe("Clear-the-Blockers (Brick Wall)", () => {
+  const wallCfg: ChallengeConfig = {
+    id: "test-wall",
+    name: "Test Wall",
+    blurb: "",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 30,
+    objective: { kind: "clear-blockers" },
+    blockers: 7,
+    blockerLayers: 3,
+  };
+
+  it("fills the whole bottom row with 3-layer blockers", () => {
+    const board = new Board(makeRng(3), wallCfg);
+    expect(board.blockersRemaining()).toBe(7);
+    const bottom = board.rows - 1;
+    for (let c = 0; c < board.cols; c++) {
+      const cell = board.grid[bottom][c];
+      expect(cell?.blocker).toBe(true);
+      expect(cell?.blockerHits).toBe(3);
+    }
+  });
+
+  it("wins once every blocker is gone", () => {
+    const game = new Game(1, wallCfg);
+    expect(game.outcome()).toBe("playing");
+    for (let r = 0; r < game.board.rows; r++)
+      for (let c = 0; c < game.board.cols; c++)
+        if (game.board.grid[r][c]?.blocker) game.board.grid[r][c] = null;
+    expect(game.outcome()).toBe("won");
+  });
+
+  it("stays solvable across seeds", () => {
+    for (let seed = 1; seed <= 25; seed++)
+      expect(new Board(makeRng(seed), wallCfg).hasLegalMove()).toBe(true);
   });
 });

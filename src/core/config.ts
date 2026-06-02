@@ -21,6 +21,14 @@ export interface ChallengeConfig {
   moves: number;
   objective: ObjectiveSpec;
   /**
+   * Beginner-friendly tutorial: the challenge-specific lines shown on the
+   * "how to play" screen before the level starts (the universal swap/match
+   * basics are added by the view). Written for someone new to games.
+   * Optional only so lightweight test fixtures can omit it; every shipped
+   * Challenge provides one.
+   */
+  tutorial?: string[];
+  /**
    * Jelly layers placed on every cell at start (Clear-Jelly challenges).
    * Omitted/0 = no jelly. A clear over a jellied cell removes one layer.
    */
@@ -47,6 +55,12 @@ export const DEFAULT_CHALLENGE: ChallengeConfig = {
   colourCount: 5,
   moves: 20,
   objective: { kind: "collect-colours", targetCount: 2, quota: 25 },
+  tutorial: [
+    "See the 2 fruits at the top? Those are your goal.",
+    "Pop those fruits by lining up 3 of them.",
+    "Every one you pop counts toward the number shown.",
+    "Win: reach both numbers before your moves hit 0.",
+  ],
 };
 
 /**
@@ -65,6 +79,12 @@ export const CHALLENGES: ChallengeConfig[] = [
     colourCount: 6,
     moves: 15,
     objective: { kind: "score", target: 6000 },
+    tutorial: [
+      "This level is all about points.",
+      "Every candy you pop earns points.",
+      "Popping lots at once earns even more!",
+      "Win: reach the points shown at the top in time.",
+    ],
   },
   {
     id: "jelly-jam",
@@ -76,6 +96,12 @@ export const CHALLENGES: ChallengeConfig[] = [
     moves: 28,
     objective: { kind: "clear-jelly" },
     jelly: 1,
+    tutorial: [
+      "Every tile has blue jelly on it.",
+      "When you pop candies, the jelly under them disappears.",
+      "Keep popping until no blue is left.",
+      "Win: clear ALL the jelly before your moves run out.",
+    ],
   },
   {
     id: "orchard-drop",
@@ -87,6 +113,12 @@ export const CHALLENGES: ChallengeConfig[] = [
     moves: 24,
     objective: { kind: "collect-ingredients", count: 3 },
     ingredients: 3,
+    tutorial: [
+      "See the cherries 🍒 near the top?",
+      "You need to get them to the very bottom.",
+      "Pop the candies under a cherry so it drops down.",
+      "Win: drop all 3 cherries off the bottom edge.",
+    ],
   },
   {
     id: "locked-vault",
@@ -98,6 +130,12 @@ export const CHALLENGES: ChallengeConfig[] = [
     moves: 22,
     objective: { kind: "collect-colours", targetCount: 2, quota: 20 },
     blockers: 4,
+    tutorial: [
+      "Same idea: pop the 2 fruits shown at the top.",
+      "But grey bricks 🧱 are in the way — they won't move.",
+      "Pop candies right next to a brick to smash it.",
+      "Win: collect both fruits before your moves run out.",
+    ],
   },
   {
     id: "grand-finale",
@@ -109,6 +147,12 @@ export const CHALLENGES: ChallengeConfig[] = [
     moves: 25,
     objective: { kind: "score", target: 9000 },
     blockers: 3,
+    tutorial: [
+      "The big finish! A larger board with more candies.",
+      "Pop candies to earn points — go for big pops.",
+      "Smash grey bricks 🧱 by popping candies beside them.",
+      "Win: reach the points shown before your moves run out.",
+    ],
   },
 ];
 

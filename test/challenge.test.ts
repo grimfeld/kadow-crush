@@ -37,6 +37,13 @@ describe("challenge config drives the board", () => {
     for (const c of colours) expect(c).toBeLessThan(4);
   });
 
+  it("every shipped challenge has a non-empty tutorial", () => {
+    for (const cfg of CHALLENGES) {
+      expect(cfg.tutorial && cfg.tutorial.length).toBeGreaterThan(0);
+      for (const line of cfg.tutorial!) expect(line.trim().length).toBeGreaterThan(0);
+    }
+  });
+
   it("generates solvable boards across seeds for every registered challenge", () => {
     for (const cfg of CHALLENGES) {
       for (let seed = 1; seed <= 25; seed++) {

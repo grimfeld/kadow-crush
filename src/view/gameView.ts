@@ -8,6 +8,7 @@ import { Game } from "../core/game.ts";
 import type { Candy, Colour, Pos, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
 import { MenuScreen } from "./menu.ts";
+import { TutorialScreen } from "./tutorial.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import {
   BG_BOTTOM,
@@ -44,8 +45,11 @@ const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
 
 export class GameView {
-  private mode: "menu" | "play" = "menu";
+  private mode: "menu" | "tutorial" | "play" = "menu";
   private menu: MenuScreen;
+  private tutorial: TutorialScreen;
+  // The challenge chosen on the menu, shown on the tutorial screen, started on Play.
+  private pending: ChallengeConfig | null = null;
   private game!: Game; // defined once a Challenge is picked
   private layout!: Layout; // defined once a Challenge is picked
   private sprites = new Map<number, Sprite>(); // candy id → sprite
@@ -69,6 +73,7 @@ export class GameView {
 
   constructor(private k: KAPLAYCtx) {
     this.menu = new MenuScreen(k);
+    this.tutorial = new TutorialScreen(k);
     this.particles = new Particles(k);
     this.bind();
     // advance particles every frame
@@ -401,7 +406,19 @@ export class GameView {
         const cfg = this.menu.hitTest(p.x, p.y);
         if (cfg) {
           playSound("swap");
-          this.startChallenge(cfg);
+          this.pending = cfg;
+          this.mode = "tutorial"; // show the how-to-play screen first
+        }
+        return;
+      }
+      if (this.mode === "tutorial") {
+        const p = k.mousePos();
+        const what = this.tutorial.hit(p.x, p.y);
+        if (what === "play" && this.pending) {
+          playSound("swap");
+          this.startChallenge(this.pending);
+        } else if (what === "back") {
+          this.returnToMenu();
         }
         return;
       }
@@ -472,7 +489,7 @@ export class GameView {
   // ---- frame --------------------------------------------------------------
 
   onResize() {
-    if (this.mode === "menu") return; // menu recomputes geometry each draw
+    if (this.mode !== "play") return; // menu/tutorial recompute geometry each draw
     this.layout = computeLayout(
       this.k.width(),
       this.k.height(),
@@ -488,6 +505,10 @@ export class GameView {
     if (this.mode === "menu") {
       this.menu.draw();
       this.particles.draw();
+      return;
+    }
+    if (this.mode === "tutorial") {
+      if (this.pending) this.tutorial.draw(this.pending);
       return;
     }
     const k = this.k;

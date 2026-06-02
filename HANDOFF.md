@@ -6,6 +6,7 @@ Mobile-first match-3 (Candy Crush clone). Kaplay + TypeScript + Vite. Level-sele
 
 - Core gameplay, specials, objective, win/lose, mobile UI, sound, particles — all DONE.
 - **Challenge grids (ADR-0002)**: level-select menu + 6 challenges across 4 objective types (collect-colours, score, clear-jelly, collect-ingredients) with per-challenge board size/colour count and immovable blockers. Per-session seeded boards.
+- **Tutorials**: tapping a challenge shows a beginner how-to-play screen (universal controls + per-challenge goal/win, in `ChallengeConfig.tutorial`) with a Play button (`src/view/tutorial.ts`). Aimed at first-time players.
 - `npm run dev` → playable. `npm test` → 31/31 green. `npm run build` → clean (~79 KB gzip).
 - ⚠️ Challenge-grids work is verified by typecheck + unit tests + careful review, but **not yet visually confirmed in-browser** — Chromium download was blocked by the web-session sandbox network policy, so `node smoke.mjs` could not run here. Run it on a machine with Playwright's Chromium to confirm rendering/animation of jelly, ingredients, and blockers.
 

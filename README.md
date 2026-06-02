@@ -13,7 +13,7 @@ npm test         # logic-core unit tests (Vitest)
 
 ## How it plays
 
-- The game opens on a **level-select menu**. Pick a challenge to play; win or lose returns you to the menu.
+- The game opens on a **level-select menu**. Pick a challenge and a short, beginner-friendly **tutorial** explains how to move, the goal, and how to win — then tap **Play**. Win or lose returns you to the menu.
 - **Challenge grids** vary the board size, colour count, move budget, and goal. Each challenge is a fixed definition; its board is generated from a fresh random seed every time you play it (see [`docs/adr/0002`](docs/adr/0002-challenge-grids.md)).
 - **Objective types** (Candy-Crush archetypes): *Collect Colours* (clear a quota of target colours), *Score* (reach a points target), *Clear Jelly* (remove all jelly), and *Collect Ingredients* (drop fruit off the bottom). Challenges may also place immovable **blockers** and vary the board size/colour count.
 - **The six grids**: Berry Sort (collect), Sugar Rush (score), Jelly Jam (jelly), Orchard Drop (ingredients), Locked Vault (collect + blockers), Grand Finale (8×8, 6 colours, score + blockers).

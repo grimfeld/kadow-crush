@@ -166,7 +166,7 @@ describe("objective and outcome", () => {
     expect(game.objective.targets.length).toBe(2);
     expect(new Set(game.objective.targets).size).toBe(2);
     expect(game.outcome()).toBe("playing");
-    expect(game.movesLeft).toBe(20);
+    expect(game.movesLeft).toBe(24); // Berry Sort budget
   });
 
   it("loses when moves run out below quota", () => {

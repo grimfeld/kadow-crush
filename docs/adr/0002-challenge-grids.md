@@ -58,11 +58,14 @@ Per ADR-0001 the core stays Kaplay-free and communicates via the ordered
 `Step[]` it emits per Move. New mechanics add **new `Step` variants** the thin
 view replays — they do not add new calls from core to view:
 
-- **Jelly** — a per-cell jelly layer. A clear over a jellied cell decrements it.
-  New step: `jelly-clear`.
-- **Ingredients** — non-matching pieces that fall with gravity and are
-  *collected* when gravity pushes them past the bottom row. New step:
-  `ingredient-collect`.
+- **Jelly** — a per-cell jelly layer, placed by pattern (all / checkerboard /
+  centre block) so difficulty can be tuned. A clear over a jellied cell
+  decrements it. New step: `jelly-clear`.
+- **Ingredients (burger parts)** — non-matching pieces that fall with gravity
+  and are *collected* when gravity pushes them past the bottom row (each with a
+  slide-off animation). Each piece is a distinct burger part
+  (`Candy.ingredientKind`) collected once; collecting them all completes the
+  burger and wins. New step: `ingredient-collect` (carries the collected kinds).
 - **Blockers** — immovable cell occupants that never match, block gravity
   (candies stack on top; gravity is segmented per column), and are cleared when
   a Match clears in an orthogonally-adjacent cell. New step: `blocker-clear`.

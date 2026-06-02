@@ -78,16 +78,16 @@ The Objective generalises beyond colour-collection. Each Challenge has exactly o
 - **Collect Colours** — clear a quota of each of N random Target Colours (the original goal). Any clear counts.
 - **Score** — reach a points target within the move budget. Clears earn points; cascades and Specials earn more.
 - **Clear Jelly** — remove all Jelly from the Board.
-- **Collect Ingredients** — bring a required number of Ingredients off the bottom of the Board.
+- **Build a Burger** (Collect Ingredients) — bring each distinct Ingredient (burger part) off the bottom of the Board; collecting them all completes the burger and wins.
 
 ### Score
 A running point total for a Challenge whose Objective is Score. Points accrue as Candies clear.
 
 ### Jelly
-A coating on a Cell, independent of the Candy on it. A Match (or Special clear) over a Jellied Cell removes one layer of Jelly. The Clear-Jelly Objective is met when no Jelly remains.
+A coating on a Cell, independent of the Candy on it. A Match (or Special clear) over a Jellied Cell removes one layer of Jelly. The Clear-Jelly Objective is met when no Jelly remains. A Challenge places Jelly in a pattern — every cell, a checkerboard, or a centred block — which tunes the difficulty.
 
-### Ingredient
-A special non-matching piece that occupies a Cell and falls with gravity like a Candy but never forms a Match. It is **collected** when gravity would carry it past the bottom row (it reaches the bottom and drops out). The Collect-Ingredients Objective counts collected Ingredients.
+### Ingredient (Burger Part)
+A special non-matching piece that occupies a Cell and falls with gravity like a Candy but never forms a Match. Each Ingredient is a distinct **burger part**, placed once. It is **collected** when gravity carries it past the bottom row (it reaches the bottom and drops out, with its own off-the-board animation). Collecting every part completes the burger and meets the Objective.
 
 ### Blocker
 An immovable Cell occupant. It never Matches and blocks gravity (Candies do not fall through it). It is cleared when an adjacent Match touches it. Blockers shape the Board and obstruct other goals.

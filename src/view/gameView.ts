@@ -13,11 +13,14 @@ import { drawCandy, drawCellBg } from "./render.ts";
 import {
   BG_BOTTOM,
   BG_TOP,
+  BURGER_DONE,
+  BURGER_PARTS,
   BURST_COLOURS,
   COLOUR_THEMES,
   GRID_PANEL,
   GRID_PANEL_BORDER,
   JELLY_FILL,
+  JELLY_OUTLINE,
   PANEL_BORDER,
   PANEL_FILL,
   TEXT_ACCENT,
@@ -31,6 +34,7 @@ interface Sprite {
   colour: Colour | null;
   special: Candy["special"];
   ingredient: boolean;
+  ingredientKind: number;
   blocker: boolean;
   x: number;
   y: number;
@@ -40,6 +44,7 @@ interface Sprite {
 const SWAP_MS = 130;
 const CLEAR_MS = 260;
 const FALL_MS = 280;
+const DROP_OUT_MS = 420; // ingredient slides off the bottom of the board
 // Beats inserted between cascade phases so each clear is legible.
 const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
@@ -62,9 +67,9 @@ export class GameView {
   // board's own jelly is already at its final state mid-resolution — same rule
   // as viewGrid vs board.grid).
   private viewJelly: number[][] = [];
-  // Ingredients collected so far, mirrored for the HUD (driven by collect steps;
-  // resynced to the board at rest points).
-  private viewIngredients = 0;
+  // Burger parts collected so far, mirrored for the HUD (driven by collect
+  // steps; resynced to the board at rest points).
+  private viewBurger = new Set<number>();
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
@@ -128,7 +133,7 @@ export class GameView {
       Array<number | null>(this.cols).fill(null),
     );
     this.viewJelly = this.game.board.jelly.map((row) => row.slice());
-    this.viewIngredients = this.game.board.ingredientsCollected;
+    this.viewBurger = new Set(this.game.board.collectedIngredientKinds);
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -139,6 +144,7 @@ export class GameView {
           colour: candy.colour,
           special: candy.special,
           ingredient: !!candy.ingredient,
+          ingredientKind: candy.ingredientKind ?? 0,
           blocker: !!candy.blocker,
           x,
           y,
@@ -201,11 +207,7 @@ export class GameView {
       await this.playStep(step);
       // Pace the cascade: pause after a clear so the gap is visible, and after
       // a spawn (end of one cascade round) before the next round begins.
-      if (
-        step.kind === "clear" ||
-        step.kind === "special-activate" ||
-        step.kind === "ingredient-collect"
-      )
+      if (step.kind === "clear" || step.kind === "special-activate")
         await this.wait(AFTER_CLEAR_MS);
       else if (step.kind === "spawn") await this.wait(AFTER_ROUND_MS);
     }
@@ -292,6 +294,7 @@ export class GameView {
             colour: sp.colour,
             special: null,
             ingredient: false,
+            ingredientKind: 0,
             blocker: false,
             x,
             y: startY,
@@ -312,10 +315,10 @@ export class GameView {
         break;
       }
       case "ingredient-collect": {
-        // ingredients leave at the bottom — pop them out like a clear
+        // a burger part reached the bottom — slide it off the board edge
         playSound("special");
-        this.viewIngredients += step.cells.length;
-        await this.popIds(step.cells, step.ids);
+        for (const kind of step.kinds) this.viewBurger.add(kind);
+        await this.dropOutIds(step.cells, step.ids);
         break;
       }
       case "blocker-clear": {
@@ -355,6 +358,38 @@ export class GameView {
     for (const id of ids) {
       const s = this.sprites.get(id);
       if (s) this.particles.burst(s.x, s.y, BURST_COLOURS[s.colour ?? 0]);
+      this.sprites.delete(id);
+    }
+  }
+
+  /**
+   * Slide the given pieces straight down and off the bottom edge of the board,
+   * then remove them — the burger-part "drop off" animation (distinct from the
+   * pop a normal clear uses).
+   */
+  private async dropOutIds(cells: Pos[], ids: number[]) {
+    cells.forEach((p) => this.setAt(p, null));
+    const exitY = this.layout.originY + this.layout.boardH + this.layout.cell;
+    const startY = new Map<number, number>();
+    for (const id of ids) {
+      const s = this.sprites.get(id);
+      if (s) startY.set(id, s.y);
+    }
+    await this.tween((t) => {
+      // ease-in fall (accelerating) feels like dropping out
+      const f = t * t;
+      for (const id of ids) {
+        const s = this.sprites.get(id);
+        const sy = startY.get(id);
+        if (s && sy != null) {
+          s.y = sy + (exitY - sy) * f;
+          s.scale = 1 - 0.25 * t;
+        }
+      }
+    }, DROP_OUT_MS);
+    for (const id of ids) {
+      const s = this.sprites.get(id);
+      if (s) this.particles.burst(s.x, s.y, [255, 180, 120]);
       this.sprites.delete(id);
     }
   }
@@ -550,14 +585,19 @@ export class GameView {
         drawCellBg(k, x, y, cell);
         const layers = this.viewJelly[r]?.[c] ?? 0;
         if (layers > 0) {
-          // each layer reads a little stronger
+          // vivid violet coating with a darker rim — clearly visible, and each
+          // extra layer reads stronger
           k.drawRect({
             pos: k.vec2(x - cell / 2 + 2, y - cell / 2 + 2),
             width: cell - 4,
             height: cell - 4,
-            radius: cell * 0.2,
+            radius: cell * 0.22,
             color: k.rgb(JELLY_FILL[0], JELLY_FILL[1], JELLY_FILL[2]),
-            opacity: Math.min(0.6, 0.32 + 0.22 * (layers - 1)),
+            opacity: Math.min(0.82, 0.52 + 0.2 * (layers - 1)),
+            outline: {
+              width: Math.max(2, cell * 0.06),
+              color: k.rgb(JELLY_OUTLINE[0], JELLY_OUTLINE[1], JELLY_OUTLINE[2]),
+            },
           });
         }
       }
@@ -588,6 +628,7 @@ export class GameView {
         s.scale,
         s.ingredient,
         s.blocker,
+        s.ingredientKind,
       );
 
     // particle bursts on top of candies
@@ -659,20 +700,35 @@ export class GameView {
 
     const spec = this.game.cfg.objective;
     if (spec.kind === "collect-ingredients") {
+      const count = spec.count;
+      const done = this.viewBurger.size >= count;
       k.drawText({
-        text: "Fruit",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.24,
-        color: dark,
+        text: done ? "Burger complete!" : "Build the burger",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.28),
+        size: panelH * 0.22,
+        color: done ? accent : dark,
         anchor: "center",
       });
-      k.drawText({
-        text: `🍒 ${Math.min(this.viewIngredients, spec.count)}/${spec.count}`,
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.68),
-        size: panelH * 0.34,
-        color: accent,
-        anchor: "center",
-      });
+      if (done) {
+        k.drawText({
+          text: BURGER_DONE,
+          pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.66),
+          size: panelH * 0.42,
+          anchor: "center",
+        });
+      } else {
+        // a row of parts; collected ones are solid, the rest faint
+        const slot = goalW / (count + 1);
+        for (let i = 0; i < count; i++) {
+          k.drawText({
+            text: BURGER_PARTS[i % BURGER_PARTS.length],
+            pos: k.vec2(goalX + slot * (i + 1), panelY + panelH * 0.64),
+            size: panelH * 0.34,
+            anchor: "center",
+            opacity: this.viewBurger.has(i) ? 1 : 0.22,
+          });
+        }
+      }
       return;
     }
     if (spec.kind === "clear-jelly") {

@@ -14,7 +14,7 @@ const jellyCfg: ChallengeConfig = {
   colourCount: 5,
   moves: 30,
   objective: { kind: "clear-jelly" },
-  jelly: 1,
+  jelly: { layers: 1, pattern: "all" },
 };
 
 function playAnyLegalMove(board: Board): Step[] {
@@ -59,6 +59,40 @@ describe("jelly", () => {
     for (const s of jellySteps)
       for (const lvl of s.levels) expect(lvl).toBe(0);
     expect(board.jellyRemaining()).toBeLessThan(before);
+  });
+
+  it("the checker pattern jellies every other cell", () => {
+    const cfg: ChallengeConfig = {
+      ...jellyCfg,
+      rows: 8,
+      cols: 7,
+      jelly: { layers: 1, pattern: "checker" },
+    };
+    const board = new Board(makeRng(2), cfg);
+    let jellied = 0;
+    for (let r = 0; r < 8; r++)
+      for (let c = 0; c < 7; c++) {
+        const expected = (r + c) % 2 === 0;
+        expect(board.jelly[r][c] > 0).toBe(expected);
+        if (board.jelly[r][c] > 0) jellied++;
+      }
+    expect(jellied).toBe(28); // half of 56
+  });
+
+  it("the center pattern jellies only a centered block", () => {
+    const cfg: ChallengeConfig = {
+      ...jellyCfg,
+      rows: 7,
+      cols: 7,
+      jelly: { layers: 1, pattern: "center" },
+    };
+    const board = new Board(makeRng(2), cfg);
+    // corners are never jellied; the middle always is
+    expect(board.jelly[0][0]).toBe(0);
+    expect(board.jelly[6][6]).toBe(0);
+    expect(board.jelly[3][3]).toBeGreaterThan(0);
+    expect(board.jellyRemaining()).toBeLessThan(7 * 7);
+    expect(board.jellyRemaining()).toBeGreaterThan(0);
   });
 
   it("the Game wins exactly when no jelly remains", () => {

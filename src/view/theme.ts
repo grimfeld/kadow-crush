@@ -44,18 +44,22 @@ export const GRID_PANEL_BORDER: [number, number, number] = [120, 180, 215];
 // Empty cell slot inside the panel.
 export const CELL_BG: [number, number, number] = [225, 238, 247];
 
-// Jelly coating drawn over a cell (Clear-Jelly challenges). Translucent so the
-// candy on top still reads; a second layer reads darker.
-export const JELLY_FILL: [number, number, number] = [120, 200, 245];
+// Jelly coating drawn over a cell (Clear-Jelly challenges). A vivid violet that
+// stands out against the light-blue board (the old pale blue blended in), with
+// a darker outline so each jellied tile is unmistakable.
+export const JELLY_FILL: [number, number, number] = [171, 92, 230];
+export const JELLY_OUTLINE: [number, number, number] = [120, 48, 178];
 
 // Special-tile base (when a candy becomes a Special its tile keeps the colour
 // tint but a bomb gets a neutral dark base for contrast).
 export const BOMB_FILL: [number, number, number] = [70, 70, 90];
 
-// Ingredient piece (Collect-Ingredients challenges) — a warm tile + a fruit
-// glyph that stands apart from the matchable candies.
+// Ingredient pieces (Collect-Ingredients challenges) — a warm tile holding a
+// distinct burger part. Each challenge uses the first `count` parts, stacked
+// top-to-bottom into a burger; collect them all to win.
 export const INGREDIENT_FILL: [number, number, number] = [255, 196, 160];
-export const INGREDIENT_EMOJI = "🍒";
+export const BURGER_PARTS = ["🍅", "🥬", "🧀", "🥩", "🥓"];
+export const BURGER_DONE = "🍔";
 
 // Blocker (immovable obstacle) — a dull stone tile that reads as "not a candy".
 export const BLOCKER_FILL: [number, number, number] = [150, 150, 160];

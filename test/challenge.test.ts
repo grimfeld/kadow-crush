@@ -54,10 +54,10 @@ describe("challenge config drives the board", () => {
 });
 
 describe("score objective", () => {
-  it("default Game is still collect-colours with the original budget", () => {
+  it("default Game is collect-colours with the Berry Sort budget", () => {
     const game = new Game(123);
     expect(game.cfg.objective.kind).toBe("collect-colours");
-    expect(game.movesLeft).toBe(20);
+    expect(game.movesLeft).toBe(24);
     expect(game.objective.targets.length).toBe(2);
   });
 

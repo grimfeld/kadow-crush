@@ -8,9 +8,9 @@ import {
   BLOCKER_EMOJI,
   BLOCKER_FILL,
   BOMB_FILL,
+  BURGER_PARTS,
   CELL_BG,
   COLOUR_THEMES,
-  INGREDIENT_EMOJI,
   INGREDIENT_FILL,
 } from "./theme.ts";
 
@@ -35,6 +35,7 @@ export function drawCandy(
   scale = 1,
   ingredient = false,
   blocker = false,
+  ingredientKind = 0,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
@@ -58,7 +59,7 @@ export function drawCandy(
     return;
   }
 
-  // Ingredient: a warm tile with a fruit glyph, no colour/special behaviour.
+  // Ingredient: a warm tile holding a burger part, no colour/special behaviour.
   if (ingredient) {
     k.drawRect({
       pos: k.vec2(x - half, y - half),
@@ -66,10 +67,10 @@ export function drawCandy(
       height: tile,
       radius: tile * 0.24,
       color: k.rgb(INGREDIENT_FILL[0], INGREDIENT_FILL[1], INGREDIENT_FILL[2]),
-      outline: { width: Math.max(1, tile * 0.04), color: k.rgb(255, 255, 255) },
+      outline: { width: Math.max(1, tile * 0.05), color: k.rgb(214, 130, 80) },
     });
     k.drawText({
-      text: INGREDIENT_EMOJI,
+      text: BURGER_PARTS[ingredientKind % BURGER_PARTS.length],
       pos: k.vec2(x, y),
       size: tile * 0.62,
       anchor: "center",

@@ -32,6 +32,15 @@ describe("ingredients", () => {
         expect(board.grid[r][c]?.ingredient).toBeFalsy();
   });
 
+  it("each ingredient is a distinct burger part (kinds 0..count-1)", () => {
+    const board = new Board(makeRng(9), ingCfg);
+    const kinds: number[] = [];
+    for (const row of board.grid)
+      for (const cell of row)
+        if (cell?.ingredient) kinds.push(cell.ingredientKind ?? -1);
+    expect(kinds.slice().sort()).toEqual([0, 1, 2]);
+  });
+
   it("never places ingredients when the challenge omits them", () => {
     expect(countIngredients(new Board(makeRng(9)).grid)).toBe(0);
   });
@@ -71,8 +80,12 @@ describe("ingredients", () => {
       { row: board.rows - 2, col: 2 },
     );
     expect(res.consumedMove).toBe(true);
-    expect(res.steps.some((s) => s.kind === "ingredient-collect")).toBe(true);
+    const collect = res.steps.find((s) => s.kind === "ingredient-collect");
+    expect(collect).toBeDefined();
+    if (collect && collect.kind === "ingredient-collect")
+      expect(collect.kinds.length).toBe(collect.ids.length);
     expect(board.ingredientsCollected).toBeGreaterThan(before);
+    expect(board.collectedIngredientKinds.length).toBe(board.ingredientsCollected);
   });
 
   it("the Game wins when enough ingredients are collected", () => {

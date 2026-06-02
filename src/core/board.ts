@@ -3,7 +3,11 @@
 // colour count come from the ChallengeConfig (ADR-0002) — there are no global
 // board constants any more.
 
-import { DEFAULT_CHALLENGE, type ChallengeConfig } from "./config.ts";
+import {
+  DEFAULT_CHALLENGE,
+  type ChallengeConfig,
+  type JellySpec,
+} from "./config.ts";
 import type { Rng } from "./rng.ts";
 import type {
   Candy,
@@ -29,8 +33,10 @@ export class Board {
   grid: Grid;
   /** Remaining Jelly layers per cell (0 = no jelly). Parallel to `grid`. */
   jelly: number[][];
-  /** Ingredients that have reached the bottom and left the board. */
+  /** Ingredients (burger parts) that have reached the bottom and left. */
   ingredientsCollected = 0;
+  /** Which burger parts have been collected (parallel record for the HUD). */
+  collectedIngredientKinds: number[] = [];
   readonly rows: number;
   readonly cols: number;
   readonly colourCount: number;
@@ -48,10 +54,34 @@ export class Board {
     this.ingredientCount = cfg.ingredients ?? 0;
     this.blockerCount = cfg.blockers ?? 0;
     this.grid = this.generateSolvableGrid();
-    const layers = cfg.jelly ?? 0;
-    this.jelly = Array.from({ length: this.rows }, () =>
-      Array<number>(this.cols).fill(layers),
+    this.jelly = this.buildJelly(cfg.jelly);
+  }
+
+  /** Build the Jelly layer from the challenge's spec (pattern + layers). */
+  private buildJelly(spec: JellySpec | undefined): number[][] {
+    const g = Array.from({ length: this.rows }, () =>
+      Array<number>(this.cols).fill(0),
     );
+    if (!spec) return g;
+    // a centered block roughly half the board, for the "center" pattern
+    const bh = Math.max(2, Math.round(this.rows * 0.5));
+    const bw = Math.max(2, Math.round(this.cols * 0.5));
+    const r0 = Math.floor((this.rows - bh) / 2);
+    const c0 = Math.floor((this.cols - bw) / 2);
+    const inPattern = (r: number, c: number): boolean => {
+      switch (spec.pattern) {
+        case "all":
+          return true;
+        case "checker":
+          return (r + c) % 2 === 0;
+        case "center":
+          return r >= r0 && r < r0 + bh && c >= c0 && c < c0 + bw;
+      }
+    };
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++)
+        if (inPattern(r, c)) g[r][c] = spec.layers;
+    return g;
   }
 
   /** Total Jelly layers left on the board (0 ⇒ Clear-Jelly objective met). */
@@ -72,8 +102,14 @@ export class Board {
     return { id: this.nextId++, colour, special: null };
   }
 
-  private newIngredient(): Candy {
-    return { id: this.nextId++, colour: null, special: null, ingredient: true };
+  private newIngredient(kind: number): Candy {
+    return {
+      id: this.nextId++,
+      colour: null,
+      special: null,
+      ingredient: true,
+      ingredientKind: kind,
+    };
   }
 
   private newBlocker(): Candy {
@@ -116,7 +152,8 @@ export class Board {
       [cols[i], cols[j]] = [cols[j], cols[i]];
     }
     const n = Math.min(this.ingredientCount, this.cols);
-    for (let i = 0; i < n; i++) grid[0][cols[i]] = this.newIngredient();
+    // each placed piece is a distinct burger part (kind 0..n-1)
+    for (let i = 0; i < n; i++) grid[0][cols[i]] = this.newIngredient(i);
   }
 
   /** Greedy fill that never completes a line of 3 as it places candies. */
@@ -480,17 +517,20 @@ export class Board {
     const r = this.rows - 1;
     const cells: Pos[] = [];
     const ids: number[] = [];
+    const kinds: number[] = [];
     for (let c = 0; c < this.cols; c++) {
       const candy = this.grid[r][c];
       if (candy?.ingredient) {
         cells.push({ row: r, col: c });
         ids.push(candy.id);
+        kinds.push(candy.ingredientKind ?? 0);
         this.grid[r][c] = null;
         this.ingredientsCollected++;
+        this.collectedIngredientKinds.push(candy.ingredientKind ?? 0);
       }
     }
     if (cells.length) {
-      steps.push({ kind: "ingredient-collect", cells, ids });
+      steps.push({ kind: "ingredient-collect", cells, ids, kinds });
       return true;
     }
     return false;

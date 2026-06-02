@@ -32,9 +32,20 @@ export interface Candy {
   ingredientKind?: number;
   /**
    * Blocker: immovable, never matches, blocks gravity (candies stack on top),
-   * and is removed when a Match clears in an orthogonally-adjacent cell.
+   * and loses one `blockerHits` layer when a Match clears in an orthogonally-
+   * adjacent cell; removed at zero.
    */
   blocker?: boolean;
+  /** Remaining adjacent-Match hits to clear a Blocker (default 1). */
+  blockerHits?: number;
+  /**
+   * Bubble Gum: an immovable, gravity-blocking tile like a Blocker, but with
+   * `gumHits` layers; on the hit that takes it to zero it pops a 3×3 explosion
+   * (which detonates any Special in range).
+   */
+  gum?: boolean;
+  /** Remaining adjacent-Match hits before the Gum pops (default 2). */
+  gumHits?: number;
   /**
    * Frozen (Color Lock): has a real Colour but is encased in frost — it cannot
    * be swapped and never forms a Match while frozen. A Match clearing in an
@@ -98,6 +109,13 @@ export type Step =
   | { kind: "ingredient-collect"; cells: Pos[]; ids: number[]; kinds: number[] }
   // Blockers removed by an adjacent Match.
   | { kind: "blocker-clear"; cells: Pos[]; ids: number[] }
+  // Layered Blockers chipped (not yet removed); parallel `hits` = remaining.
+  | { kind: "blocker-hit"; cells: Pos[]; ids: number[]; hits: number[] }
+  // Bubble Gum chipped (not yet popped); parallel `hits` = remaining.
+  | { kind: "gum-hit"; cells: Pos[]; ids: number[]; hits: number[] }
+  // Bubble Gum popped: `cells`/`ids` are the gum tiles; the resulting 3×3
+  // explosion clears are emitted as their own special-activate steps.
+  | { kind: "gum-pop"; cells: Pos[]; ids: number[] }
   // Frozen candies thawed by an adjacent Match (frost off; candy stays).
   | { kind: "thaw"; cells: Pos[]; ids: number[] }
   // Gift Boxes knocked by an adjacent Match (parallel `hits` = remaining).

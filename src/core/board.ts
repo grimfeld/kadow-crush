@@ -48,9 +48,12 @@ export class Board {
   readonly colourCount: number;
   private readonly ingredientCount: number;
   private readonly blockerCount: number;
+  private readonly blockerLayers: number;
   private readonly frozenCount: number;
   private readonly boxCount: number;
   private readonly boxHits: number;
+  private readonly gumCount: number;
+  private readonly gumLayers: number;
   private readonly avalancheRate: number;
   /** Rotating burger-part kind for Avalanche-spawned ingredients. */
   private avalancheKind = 0;
@@ -67,9 +70,12 @@ export class Board {
     this.colourCount = cfg.colourCount;
     this.ingredientCount = cfg.ingredients ?? 0;
     this.blockerCount = cfg.blockers ?? 0;
+    this.blockerLayers = Math.max(1, cfg.blockerLayers ?? 1);
     this.frozenCount = cfg.frozen ?? 0;
     this.boxCount = cfg.boxes ?? 0;
     this.boxHits = cfg.boxHits ?? 2;
+    this.gumCount = cfg.gum ?? 0;
+    this.gumLayers = Math.max(1, cfg.gumLayers ?? 2);
     this.avalancheRate = cfg.avalanche ?? 0;
     this.grid = this.generateSolvableGrid();
     this.jelly = this.buildJelly(cfg.jelly);
@@ -159,12 +165,12 @@ export class Board {
   /** A candy that cannot be swapped by the player (Blocker, Frozen, or a sealed
    *  Gift Box). */
   private immovable(cell: Candy | null): boolean {
-    return !!cell && (!!cell.blocker || !!cell.frozen || !!cell.box);
+    return !!cell && (!!cell.blocker || !!cell.frozen || !!cell.box || !!cell.gum);
   }
 
   /** A candy that acts as a gravity wall: candies stack on it, none fall past. */
   private isWall(cell: Candy | null): boolean {
-    return !!cell && (!!cell.blocker || !!cell.box);
+    return !!cell && (!!cell.blocker || !!cell.box || !!cell.gum);
   }
 
   // ---- generation ---------------------------------------------------------
@@ -184,7 +190,23 @@ export class Board {
   }
 
   private newBlocker(): Candy {
-    return { id: this.nextId++, colour: null, special: null, blocker: true };
+    return {
+      id: this.nextId++,
+      colour: null,
+      special: null,
+      blocker: true,
+      blockerHits: this.blockerLayers,
+    };
+  }
+
+  private newGum(): Candy {
+    return {
+      id: this.nextId++,
+      colour: null,
+      special: null,
+      gum: true,
+      gumHits: this.gumLayers,
+    };
   }
 
   private newFrozen(colour: Colour): Candy {
@@ -207,6 +229,7 @@ export class Board {
     for (;;) {
       const grid = this.fillNoMatches();
       this.placeBlockers(grid);
+      this.placeGum(grid);
       this.placeBoxes(grid);
       this.placeIngredients(grid);
       this.placeFrozen(grid);
@@ -257,6 +280,22 @@ export class Board {
     for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newBlocker();
   }
 
+  /** Place Bubble Gum on distinct free bottom-row columns (like Blockers, so it
+   *  never traps an unfillable hole above it). */
+  private placeGum(grid: Grid) {
+    if (this.gumCount <= 0) return;
+    const r = this.rows - 1;
+    const cols: number[] = [];
+    // overwrite a plain candy; never another immovable obstacle
+    for (let c = 0; c < this.cols; c++) if (!this.isWall(grid[r][c])) cols.push(c);
+    for (let i = cols.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [cols[i], cols[j]] = [cols[j], cols[i]];
+    }
+    const n = Math.min(this.gumCount, cols.length);
+    for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newGum();
+  }
+
   /** Place Gift Boxes on distinct bottom-row columns (so a cracked box becomes
    *  an Ingredient already at the bottom, collected on the next settle, and the
    *  sealed crate never traps an unfillable hole above it). */
@@ -264,7 +303,8 @@ export class Board {
     if (this.boxCount <= 0) return;
     const r = this.rows - 1;
     const cols: number[] = [];
-    for (let c = 0; c < this.cols; c++) if (!grid[r][c]?.blocker) cols.push(c);
+    // overwrite a plain candy; never another immovable obstacle
+    for (let c = 0; c < this.cols; c++) if (!this.isWall(grid[r][c])) cols.push(c);
     for (let i = cols.length - 1; i > 0; i--) {
       const j = this.rng.int(i + 1);
       [cols[i], cols[j]] = [cols[j], cols[i]];
@@ -883,7 +923,7 @@ export class Board {
     const { cells: cl, ids, jelly } = this.clearCells(cells, cleared);
     steps.push({ kind: "special-activate", origin, cleared: cl, ids, special });
     this.pushJelly(steps, jelly);
-    this.clearAdjacentBlockers(cl, steps);
+    this.clearAdjacentBlockers(cl, steps, cleared);
     this.thawAdjacentFrozen(cl, steps);
     this.hitAdjacentBoxes(cl, steps);
     // chain-detonate any specials the blast covered
@@ -898,7 +938,7 @@ export class Board {
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
         if (cell && cell.colour === from && !cell.special && !cell.ingredient &&
-            !cell.blocker && !cell.frozen && !cell.box) {
+            !cell.blocker && !cell.frozen && !cell.box && !cell.gum) {
           cell.colour = to;
           cells.push({ row: r, col: c });
           ids.push(cell.id);
@@ -942,7 +982,7 @@ export class Board {
         }
         const cell = this.grid[r][c];
         if (!cell) continue;
-        if ((cell.box || cell.blocker) && d < obstacleD) {
+        if ((cell.box || cell.blocker || cell.gum) && d < obstacleD) {
           obstacleD = d;
           obstacle = { row: r, col: c };
         }
@@ -979,7 +1019,8 @@ export class Board {
       // adjacent-Match clears a Blocker, thaws Frost, or knocks a Box). Without
       // this guard a striped/bomb blast would silently delete a Box instead of
       // cracking it open.
-      if (candy.ingredient || candy.blocker || candy.frozen || candy.box) continue;
+      if (candy.ingredient || candy.blocker || candy.frozen || candy.box || candy.gum)
+        continue;
       if (candy.colour !== null) cleared.push(candy.colour);
       outCells.push(p);
       ids.push(candy.id);
@@ -1000,12 +1041,27 @@ export class Board {
       steps.push({ kind: "jelly-clear", cells: jelly.cells, levels: jelly.levels });
   }
 
-  /** Remove Blockers orthogonally adjacent to the just-cleared cells. */
-  private clearAdjacentBlockers(clearedCells: Pos[], steps: Step[]) {
-    if (this.blockerCount <= 0) return;
+  /**
+   * Chip Blockers and Bubble Gum orthogonally adjacent to the just-cleared
+   * cells. Layered Blockers lose one layer (emit blocker-hit) and are removed at
+   * zero (blocker-clear). Gum loses one layer (gum-hit); the hit that takes it to
+   * zero pops it (gum-pop) and triggers a 3×3 explosion that detonates Specials
+   * in range. A cell is chipped at most once per call (`seen`).
+   */
+  private clearAdjacentBlockers(clearedCells: Pos[], steps: Step[], cleared: Colour[] = []) {
+    if (this.blockerCount <= 0 && this.gumCount <= 0) return;
     const seen = new Set<string>();
-    const cells: Pos[] = [];
-    const ids: number[] = [];
+    const removeCells: Pos[] = [];
+    const removeIds: number[] = [];
+    const hitCells: Pos[] = [];
+    const hitIds: number[] = [];
+    const hitLeft: number[] = [];
+    const gumHitCells: Pos[] = [];
+    const gumHitIds: number[] = [];
+    const gumHitLeft: number[] = [];
+    const popped: Pos[] = []; // gum tiles that pop this call
+    const poppedIds: number[] = [];
+
     for (const p of clearedCells) {
       for (const [dr, dc] of [
         [1, 0],
@@ -1018,15 +1074,54 @@ export class Board {
         if (!this.inBounds(nr, nc)) continue;
         const cell = this.grid[nr][nc];
         const k = `${nr},${nc}`;
-        if (cell?.blocker && !seen.has(k)) {
+        if (seen.has(k)) continue;
+        if (cell?.blocker) {
           seen.add(k);
-          cells.push({ row: nr, col: nc });
-          ids.push(cell.id);
-          this.grid[nr][nc] = null;
+          cell.blockerHits = (cell.blockerHits ?? 1) - 1;
+          if (cell.blockerHits <= 0) {
+            removeCells.push({ row: nr, col: nc });
+            removeIds.push(cell.id);
+            this.grid[nr][nc] = null;
+          } else {
+            hitCells.push({ row: nr, col: nc });
+            hitIds.push(cell.id);
+            hitLeft.push(cell.blockerHits);
+          }
+        } else if (cell?.gum) {
+          seen.add(k);
+          cell.gumHits = (cell.gumHits ?? 1) - 1;
+          if (cell.gumHits <= 0) {
+            popped.push({ row: nr, col: nc });
+            poppedIds.push(cell.id);
+            this.grid[nr][nc] = null;
+          } else {
+            gumHitCells.push({ row: nr, col: nc });
+            gumHitIds.push(cell.id);
+            gumHitLeft.push(cell.gumHits);
+          }
         }
       }
     }
-    if (cells.length) steps.push({ kind: "blocker-clear", cells, ids });
+    if (hitCells.length)
+      steps.push({ kind: "blocker-hit", cells: hitCells, ids: hitIds, hits: hitLeft });
+    if (removeCells.length)
+      steps.push({ kind: "blocker-clear", cells: removeCells, ids: removeIds });
+    if (gumHitCells.length)
+      steps.push({ kind: "gum-hit", cells: gumHitCells, ids: gumHitIds, hits: gumHitLeft });
+    if (popped.length) {
+      steps.push({ kind: "gum-pop", cells: popped, ids: poppedIds });
+      // each popped gum bursts its 3×3 (detonating any Special in range)
+      for (const g of popped) {
+        const area: Pos[] = [];
+        for (let dr = -1; dr <= 1; dr++)
+          for (let dc = -1; dc <= 1; dc++) {
+            const r = g.row + dr;
+            const c = g.col + dc;
+            if (this.inBounds(r, c)) area.push({ row: r, col: c });
+          }
+        this.blast(area, g, "wrapped", steps, cleared);
+      }
+    }
   }
 
   /** Thaw Frozen candies orthogonally adjacent to the just-cleared cells. */
@@ -1135,7 +1230,7 @@ export class Board {
           bySpecial: false,
         });
         this.pushJelly(steps, cleared2.jelly);
-        this.clearAdjacentBlockers(cleared2.cells, steps);
+        this.clearAdjacentBlockers(cleared2.cells, steps, cleared);
         this.thawAdjacentFrozen(cleared2.cells, steps);
         this.hitAdjacentBoxes(cleared2.cells, steps);
 
@@ -1420,7 +1515,7 @@ export class Board {
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
-        if (!cell || cell.blocker || cell.ingredient || cell.frozen || cell.box)
+        if (!cell || cell.blocker || cell.ingredient || cell.frozen || cell.box || cell.gum)
           continue;
         movable.push(cell);
         slots.push({ row: r, col: c });
@@ -1435,7 +1530,7 @@ export class Board {
       // Start from the fixed occupants, then drop the shuffled candies in.
       const grid: Grid = this.grid.map((row) =>
         row.map((cell) =>
-          cell && (cell.blocker || cell.ingredient || cell.frozen || cell.box)
+          cell && (cell.blocker || cell.ingredient || cell.frozen || cell.box || cell.gum)
             ? cell
             : null,
         ),

@@ -74,6 +74,10 @@ export const FROST_OUTLINE: [number, number, number] = [120, 190, 240];
 export const BOX_FILL: [number, number, number] = [246, 211, 140];
 export const BOX_OUTLINE: [number, number, number] = [196, 142, 60];
 
+// Bubble Gum tile — glossy bubblegum pink, multi-hit, pops a 3x3 on the last hit.
+export const GUM_FILL: [number, number, number] = [255, 150, 200];
+export const GUM_OUTLINE: [number, number, number] = [210, 80, 150];
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

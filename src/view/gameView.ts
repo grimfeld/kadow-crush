@@ -39,9 +39,12 @@ interface Sprite {
   ingredient: boolean;
   ingredientKind: number;
   blocker: boolean;
+  blockerHits: number;
   frozen: boolean;
   box: boolean;
   boxHits: number;
+  gum: boolean;
+  gumHits: number;
   x: number;
   y: number;
   scale: number;
@@ -338,9 +341,12 @@ export class GameView {
           ingredient: !!candy.ingredient,
           ingredientKind: candy.ingredientKind ?? 0,
           blocker: !!candy.blocker,
+          blockerHits: candy.blockerHits ?? 0,
           frozen: !!candy.frozen,
           box: !!candy.box,
           boxHits: candy.boxHits ?? 0,
+          gum: !!candy.gum,
+          gumHits: candy.gumHits ?? 0,
           x,
           y,
           scale: 1,
@@ -503,9 +509,12 @@ export class GameView {
             ingredient: false,
             ingredientKind: 0,
             blocker: false,
+            blockerHits: 0,
             frozen: false,
             box: false,
             boxHits: 0,
+            gum: false,
+            gumHits: 0,
             x,
             y: startY,
             scale: 1,
@@ -530,9 +539,12 @@ export class GameView {
             ingredient: true,
             ingredientKind: sp.kind,
             blocker: false,
+            blockerHits: 0,
             frozen: false,
             box: false,
             boxHits: 0,
+            gum: false,
+            gumHits: 0,
             x,
             y: startY,
             scale: 1,
@@ -571,6 +583,37 @@ export class GameView {
       case "blocker-clear": {
         // an adjacent match broke these blockers — pop them out
         playSound("clear");
+        await this.popIds(step.cells, step.ids);
+        break;
+      }
+      case "blocker-hit": {
+        // a layered blocker chipped — drop a pip and shake
+        playSound("clear");
+        step.ids.forEach((id, i) => {
+          const s = this.sprites.get(id);
+          if (s) s.blockerHits = step.hits[i];
+        });
+        await Promise.all(step.ids.map((id) => this.pulse(id)));
+        break;
+      }
+      case "gum-hit": {
+        // bubble gum chipped — drop a pip and a small squish
+        playSound("wrapped");
+        step.ids.forEach((id, i) => {
+          const s = this.sprites.get(id);
+          if (s) s.gumHits = step.hits[i];
+        });
+        await Promise.all(step.ids.map((id) => this.pulse(id)));
+        break;
+      }
+      case "gum-pop": {
+        // bubble gum popped — splash + a burst flash where it was
+        playSound("wrapped");
+        for (const p of step.cells) {
+          const { x, y } = cellCenter(this.layout, p.row, p.col);
+          this.effects.flash(x, y, this.layout.cell * 2.2, [255, 120, 190]);
+          this.particles.burst(x, y, [255, 140, 200], 10);
+        }
         await this.popIds(step.cells, step.ids);
         break;
       }
@@ -1083,6 +1126,9 @@ export class GameView {
         s.frozen,
         s.box,
         s.boxHits,
+        s.blockerHits,
+        s.gum,
+        s.gumHits,
       );
     };
     for (const s of this.sprites.values())

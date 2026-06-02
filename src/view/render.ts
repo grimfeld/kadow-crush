@@ -15,6 +15,8 @@ import {
   COLOUR_THEMES,
   FROST_FILL,
   FROST_OUTLINE,
+  GUM_FILL,
+  GUM_OUTLINE,
   INGREDIENT_FILL,
 } from "./theme.ts";
 
@@ -43,6 +45,9 @@ export function drawCandy(
   frozen = false,
   box = false,
   boxHits = 0,
+  blockerHits = 0,
+  gum = false,
+  gumHits = 0,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
@@ -77,6 +82,27 @@ export function drawCandy(
     return;
   }
 
+  // Bubble Gum: a glossy pink immovable tile; pips show remaining hits.
+  if (gum) {
+    k.drawRect({
+      pos: k.vec2(x - half, y - half),
+      width: tile,
+      height: tile,
+      radius: tile * 0.3,
+      color: k.rgb(GUM_FILL[0], GUM_FILL[1], GUM_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.06), color: k.rgb(GUM_OUTLINE[0], GUM_OUTLINE[1], GUM_OUTLINE[2]) },
+    });
+    // a glossy highlight blob
+    k.drawCircle({
+      pos: k.vec2(x - tile * 0.18, y - tile * 0.18),
+      radius: tile * 0.12,
+      color: white,
+      opacity: 0.5,
+    });
+    drawHitPips(k, x, y + half * 0.62, tile, gumHits, GUM_OUTLINE);
+    return;
+  }
+
   // Blocker: a dull immovable stone tile.
   if (blocker) {
     k.drawRect({
@@ -94,6 +120,8 @@ export function drawCandy(
       anchor: "center",
       color: white,
     });
+    // pips only when it takes more than one hit
+    if (blockerHits > 1) drawHitPips(k, x, y + half * 0.66, tile, blockerHits, [70, 70, 80]);
     return;
   }
 
@@ -199,6 +227,28 @@ function drawStripes(
         opacity: 0.9,
       });
     }
+  }
+}
+
+/** A centred row of `n` little pips (remaining-hits indicator). */
+function drawHitPips(
+  k: KAPLAYCtx,
+  x: number,
+  y: number,
+  tile: number,
+  n: number,
+  color: [number, number, number],
+) {
+  if (n <= 0) return;
+  const pipR = tile * 0.06;
+  const gap = pipR * 2.6;
+  const startX = x - (gap * (n - 1)) / 2;
+  for (let i = 0; i < n; i++) {
+    k.drawCircle({
+      pos: k.vec2(startX + i * gap, y),
+      radius: pipR,
+      color: k.rgb(color[0], color[1], color[2]),
+    });
   }
 }
 

@@ -108,7 +108,10 @@ A special non-matching piece that occupies a Cell and falls with gravity like a 
 A Collect-Ingredients variant where Ingredients are not all placed at start but **rain in** from the top during play — a column's entry Cell may spawn one on refill, capped at a few on the Board at once so it never floods. The win count exceeds the burger-part set, so the goal is to *catch* a number of parts rather than assemble one of each.
 
 ### Blocker
-An immovable Cell occupant. It never Matches and blocks gravity (Candies do not fall through it). It is cleared when an adjacent Match touches it. Blockers shape the Board and obstruct other goals.
+An immovable Cell occupant. It never Matches and blocks gravity (Candies do not fall through it). An adjacent Match chips one layer; it is removed when its layers reach zero (a single-layer Blocker clears on the first adjacent Match). Layer count is per-Challenge (`blockerLayers`).
+
+### Bubble Gum
+An immovable, gravity-blocking floor tile like a Blocker, with multiple layers (`gumLayers`). An adjacent Match chips one layer; the hit that takes it to zero **pops a 3×3 explosion** around it that clears candies and detonates any Special in range. A Cell is exactly one of: normal Candy, Blocker, Jelly-coated Candy, or Bubble Gum — the three obstacle types don't stack on one Cell, but each can have layers.
 
 ### Frozen Candy (Color Lock)
 A Candy encased in frost. It keeps a real Colour but never Matches and cannot be swapped while frozen; it still falls with gravity. A Match in an orthogonally-adjacent Cell **thaws** it into an ordinary Candy.

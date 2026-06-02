@@ -63,6 +63,15 @@ export interface ChallengeConfig {
    * the bottom row so they never trap unfillable holes above them.
    */
   blockers?: number;
+  /** Adjacent-Match hits to clear each Blocker (default 1). */
+  blockerLayers?: number;
+  /**
+   * Number of Bubble Gum tiles (bottom row). Immovable like a Blocker but with
+   * `gumLayers` hits; the final hit pops a 3×3 explosion.
+   */
+  gum?: number;
+  /** Adjacent-Match hits before each Gum pops (default 2). */
+  gumLayers?: number;
   /**
    * Number of Frozen candies (Color Lock) scattered at start. Each is frosted
    * over — unmatchable until an adjacent Match thaws it into a normal candy.
@@ -379,6 +388,47 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Collect the 2 fruits shown at the top, as usual.",
       "But some candies are frozen in frost ❄️ and can't move.",
       "Pop a match right next to a frozen one to melt it free.",
+      "Win: collect both fruits before your moves run out.",
+    ],
+  },
+  {
+    id: "sticky-situation",
+    name: "Sticky Situation",
+    blurb: "Gummy blobs guard the floor — chew through and pop them!",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 30,
+    objective: { kind: "clear-jelly" },
+    jelly: { layers: 1, pattern: "center" },
+    gum: 3,
+    gumLayers: 2,
+    tutorial: [
+      "Clear all the purple jelly to win.",
+      "Pink bubble gum 🩷 sits on the floor — it takes a couple of hits.",
+      "Pop a match next to a gum blob; the dots show hits left.",
+      "On its last hit the gum BURSTS, clearing a 3×3 around it! 💥",
+      "Win: scrub away every bit of jelly before moves run out.",
+    ],
+  },
+  {
+    id: "iron-floor",
+    name: "Iron Floor",
+    blurb: "Tough triple-layer bricks line the floor — chip them down.",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 30,
+    objective: { kind: "collect-colours", targetCount: 2, quota: 12 },
+    blockers: 4,
+    blockerLayers: 3,
+    tutorial: [
+      "Collect the 2 fruits shown at the top.",
+      "Grey bricks 🧱 line the floor — these ones are extra tough.",
+      "Each brick takes 3 hits; the dots show how many are left.",
+      "Pop matches next to a brick to chip it away.",
       "Win: collect both fruits before your moves run out.",
     ],
   },

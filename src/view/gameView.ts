@@ -702,13 +702,14 @@ export class GameView {
     if (spec.kind === "collect-ingredients") {
       const count = spec.count;
       const done = this.viewBurger.size >= count;
-      k.drawText({
-        text: done ? "Burger complete!" : "Build the burger",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.28),
-        size: panelH * 0.22,
-        color: done ? accent : dark,
-        anchor: "center",
-      });
+      this.fitText(
+        done ? "Burger complete!" : "Build the burger",
+        goalX + goalW / 2,
+        panelY + panelH * 0.28,
+        goalW * 0.9,
+        panelH * 0.22,
+        done ? accent : dark,
+      );
       if (done) {
         k.drawText({
           text: BURGER_DONE,
@@ -758,13 +759,14 @@ export class GameView {
         color: dark,
         anchor: "center",
       });
-      k.drawText({
-        text: `${this.game.score.toLocaleString()} / ${spec.target.toLocaleString()}`,
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.68),
-        size: panelH * 0.3,
-        color: accent,
-        anchor: "center",
-      });
+      this.fitText(
+        `${this.game.score.toLocaleString()} / ${spec.target.toLocaleString()}`,
+        goalX + goalW / 2,
+        panelY + panelH * 0.68,
+        goalW * 0.9,
+        panelH * 0.3,
+        accent,
+      );
       return;
     }
 
@@ -776,27 +778,50 @@ export class GameView {
       color: dark,
       anchor: "center",
     });
-    // goal chips: emoji + count, evenly spread
+    // goal chips: emoji + count, evenly spread. With many targets (e.g. Rainbow
+    // Platter's five) a slot gets narrow, so stack the count under the emoji and
+    // size both to the slot — keeps everything inside the panel on phones.
     const chips = Math.max(1, obj.targets.length);
     const slot = goalW / chips;
+    const wide = chips <= 3;
     obj.targets.forEach((colour, i) => {
       const cx = goalX + slot * (i + 0.5);
       const cy = panelY + panelH * 0.64;
       const theme = COLOUR_THEMES[colour as Colour];
       const got = Math.min(obj.collected.get(colour) ?? 0, obj.quota);
-      k.drawText({
-        text: theme.emoji,
-        pos: k.vec2(cx - panelH * 0.18, cy),
-        size: panelH * 0.36,
-        anchor: "center",
-      });
-      k.drawText({
-        text: `${got}/${obj.quota}`,
-        pos: k.vec2(cx + panelH * 0.12, cy),
-        size: panelH * 0.26,
-        color: dark,
-        anchor: "left",
-      });
+      const emojiSize = Math.min(panelH * 0.36, slot * 0.5);
+      const countSize = Math.min(panelH * 0.26, slot * 0.4);
+      if (wide) {
+        // roomy: emoji and count side by side
+        k.drawText({
+          text: theme.emoji,
+          pos: k.vec2(cx - panelH * 0.18, cy),
+          size: emojiSize,
+          anchor: "center",
+        });
+        k.drawText({
+          text: `${got}/${obj.quota}`,
+          pos: k.vec2(cx + panelH * 0.12, cy),
+          size: countSize,
+          color: dark,
+          anchor: "left",
+        });
+      } else {
+        // tight: stack the count beneath the emoji
+        k.drawText({
+          text: theme.emoji,
+          pos: k.vec2(cx, cy - panelH * 0.14),
+          size: emojiSize,
+          anchor: "center",
+        });
+        k.drawText({
+          text: `${got}/${obj.quota}`,
+          pos: k.vec2(cx, cy + panelH * 0.2),
+          size: countSize,
+          color: dark,
+          anchor: "center",
+        });
+      }
     });
   }
 
@@ -814,13 +839,14 @@ export class GameView {
     const px = (k.width() - w) / 2;
     const py = (k.height() - ph) / 2;
     this.panel(px, py, w, ph);
-    k.drawText({
-      text: won ? "🎉 You Win!" : "Out of Moves",
-      pos: k.vec2(k.width() / 2, py + ph * 0.32),
-      size: 34,
-      color: k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]),
-      anchor: "center",
-    });
+    this.fitText(
+      won ? "🎉 You Win!" : "Out of Moves",
+      k.width() / 2,
+      py + ph * 0.32,
+      w * 0.84,
+      34,
+      k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]),
+    );
     // play-again pill
     const bw = w * 0.6;
     const bh = 52;
@@ -833,13 +859,36 @@ export class GameView {
       radius: bh / 2,
       color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]),
     });
-    k.drawText({
-      text: "Back to Challenges",
-      pos: k.vec2(k.width() / 2, by + bh / 2),
-      size: 20,
-      color: k.rgb(255, 255, 255),
-      anchor: "center",
-    });
+    this.fitText(
+      "Back to Challenges",
+      k.width() / 2,
+      by + bh / 2,
+      bw * 0.88,
+      20,
+      k.rgb(255, 255, 255),
+    );
+  }
+
+  /**
+   * Centered single line that shrinks to fit `maxW` (down to a floor) so HUD and
+   * overlay labels never leak out of their panel on narrow phone screens.
+   */
+  private fitText(
+    text: string,
+    cx: number,
+    cy: number,
+    maxW: number,
+    size: number,
+    color: ReturnType<KAPLAYCtx["rgb"]>,
+  ) {
+    const k = this.k;
+    let s = size;
+    for (let i = 0; i < 8; i++) {
+      const m = k.formatText({ text, size: s, pos: k.vec2(0, 0) });
+      if (m.width <= maxW || s <= size * 0.5) break;
+      s *= 0.9;
+    }
+    k.drawText({ text, pos: k.vec2(cx, cy), size: s, color, anchor: "center" });
   }
 }
 

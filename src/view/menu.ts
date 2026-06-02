@@ -143,22 +143,16 @@ export class MenuScreen {
     });
 
     const padL = x + w * 0.08;
-    k.drawText({
-      text: cfg.name,
-      pos: k.vec2(padL, y + h * 0.2),
-      size: h * 0.2,
-      color: accent,
-      anchor: "left",
-      width: w * 0.84,
-    });
-    k.drawText({
-      text: objectiveSummary(cfg),
-      pos: k.vec2(padL, y + h * 0.48),
-      size: h * 0.135,
-      color: dark,
-      anchor: "left",
-      width: w * 0.84,
-    });
+    const textW = w * 0.84;
+    this.fitText(cfg.name, padL, y + h * 0.2, textW, h * 0.2, accent);
+    this.fitText(
+      objectiveSummary(cfg),
+      padL,
+      y + h * 0.48,
+      textW,
+      h * 0.135,
+      dark,
+    );
 
     // difficulty chip (bottom-left)
     const difficulty = cfg.difficulty ?? "Medium";
@@ -180,14 +174,46 @@ export class MenuScreen {
       anchor: "center",
     });
 
-    // board-size hint (bottom-right)
-    k.drawText({
-      text: `${cfg.rows}×${cfg.cols} · ${cfg.moves} moves`,
-      pos: k.vec2(x + w - w * 0.06, y + h * 0.8),
-      size: h * 0.12,
-      color: dark,
-      opacity: 0.7,
-      anchor: "right",
-    });
+    // board-size hint (bottom-right) — sits to the right of the chip, so cap its
+    // width to the gap between the chip and the card edge and shrink to fit.
+    const hintW = w - (chipW + w * 0.08 + w * 0.12);
+    this.fitText(
+      `${cfg.rows}×${cfg.cols} · ${cfg.moves} moves`,
+      x + w - w * 0.06,
+      y + h * 0.8,
+      hintW,
+      h * 0.12,
+      dark,
+      "right",
+      0.7,
+    );
+  }
+
+  /**
+   * Draw a single line of text that always fits within `maxW` by shrinking the
+   * font (down to a floor) when the text at the requested size would overflow.
+   * Prevents labels from leaking out of cards on narrow phone screens, where
+   * card width — and thus the size pegged to it — gets very small.
+   */
+  private fitText(
+    text: string,
+    x: number,
+    y: number,
+    maxW: number,
+    size: number,
+    color: ReturnType<KAPLAYCtx["rgb"]>,
+    anchor: "left" | "right" = "left",
+    opacity = 1,
+  ) {
+    const k = this.k;
+    let s = size;
+    // formatText measures the laid-out width at a given size; ratchet down until
+    // it fits (or we hit the readability floor).
+    for (let i = 0; i < 8; i++) {
+      const m = k.formatText({ text, size: s, pos: k.vec2(0, 0) });
+      if (m.width <= maxW || s <= size * 0.5) break;
+      s *= 0.9;
+    }
+    k.drawText({ text, pos: k.vec2(x, y), size: s, color, anchor, opacity });
   }
 }

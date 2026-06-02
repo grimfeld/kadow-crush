@@ -7,6 +7,10 @@ export type SoundName =
   | "invalid"
   | "clear"
   | "special"
+  | "striped"
+  | "wrapped"
+  | "bomb"
+  | "fish"
   | "fall"
   | "win"
   | "lose";
@@ -70,6 +74,29 @@ export function playSound(name: SoundName) {
       [523, 659, 784, 1047].forEach((f, i) =>
         note(c, f, t + i * 0.05, 0.16, "square", 0.16),
       );
+      break;
+    case "striped":
+      // a quick laser sweep — descending sawtooth zip
+      note(c, 1200, t, 0.06, "sawtooth", 0.16);
+      note(c, 700, t + 0.05, 0.1, "sawtooth", 0.14);
+      break;
+    case "wrapped":
+      // a punchy double thud (the 3x3 burst)
+      note(c, 160, t, 0.16, "sine", 0.22);
+      note(c, 120, t + 0.12, 0.2, "sine", 0.2);
+      note(c, 420, t, 0.1, "square", 0.1);
+      break;
+    case "bomb":
+      // a big detonation: low boom + bright shimmer spray
+      note(c, 90, t, 0.4, "sine", 0.28);
+      [880, 1320, 1760, 2200].forEach((f, i) =>
+        note(c, f, t + i * 0.03, 0.18, "square", 0.08),
+      );
+      break;
+    case "fish":
+      // a watery blip-up
+      note(c, 520, t, 0.08, "sine", 0.16);
+      note(c, 900, t + 0.06, 0.12, "sine", 0.14);
       break;
     case "fall":
       note(c, 300, t, 0.12, "sine", 0.1);

@@ -23,19 +23,23 @@ A straight line (horizontal or vertical) of 3 or more Candies sharing a Colour. 
 The player action: exchange two orthogonally-adjacent Candies. A Swap is **legal** only if it produces at least one Match. An illegal Swap reverts (the two Candies bounce back).
 
 ### Special
-A Candy with an effect beyond colour-matching. Created by a Match of 4 or 5. Effects:
+A Candy with an effect beyond colour-matching. Created by the **shape** of a Match, classified by priority Color Bomb > Coloring > Wrapped > Fish > Striped (see ADR-0005). Effects:
 
 | Created by | Special | Effect when activated |
 |---|---|---|
-| Match of 4 in a row (horizontal) | Striped | Clears its entire **row** |
-| Match of 4 in a column (vertical) | Striped | Clears its entire **column** |
-| Match of 5 in a line | Color Bomb | Clears all Candies sharing the Colour it is swapped with |
+| Line of 4 (horizontal) | Striped | Clears its entire **row** |
+| Line of 4 (vertical) | Striped | Clears its entire **column** |
+| Line of 5+ | Color Bomb | Clears all Candies of one Colour (its swap partner's) |
+| T / L intersection | Wrapped | **3×3** explosion around it |
+| 2×2 block | Fish | Flies to a useful target (jelly › obstacle › candy) and pops a + there |
+| Group of 6+ | Coloring | Recolours every Candy of one Colour into its own Colour (no clear) |
 
-- **Swap-only activation**: a Special activates only when the player swaps it. A Special caught in a cascade Match (without being swapped) clears like an ordinary Candy and does not fire its effect. This rule is the same for both Special types.
-- A Color Bomb activates when swapped with another Candy; it clears every Candy of that Candy's Colour. (Because activation is swap-only, the Color Bomb always has a defined target Colour — the Candy it was swapped with.)
-- A line of 5 or more makes exactly one Color Bomb; a line of exactly 4 makes one Striped. Only straight horizontal/vertical lines make Specials — L/T intersections clear as ordinary Matches.
-- On a Swap-made Match, the Special spawns at the swapped Cell.
-- **No combos**: two Specials swapped together trigger individually (no compound effect), and a Special does not chain into another Special.
+- A Special spawns at the swapped Cell when the Match was swap-made.
+- **Chaining**: a blast that covers another Special detonates it too, recursively (a per-Move firing set prevents double-firing).
+- **Specials still match**: except the Color Bomb (no Colour), a Special keeps its Colour and can be lined up in a Match — the escape valve that stops boards clogging with un-fireable Specials.
+
+### Combo
+Two Specials swapped together produce a single combined effect, bigger than either alone (e.g. Striped+Striped clears a full row **and** column; Wrapped+Wrapped is a 5×5; Striped+Wrapped fires 3 rows + 3 columns; Fish carriers deliver another Special's blast to a target; Color-Bomb+Striped/Wrapped converts a Colour into that Special and fires them all). The two biggest — Color-Bomb+Color-Bomb and Coloring+Coloring — clear a large but **capped** area (≤ ~50% of the board) so they can't be a guaranteed one-Move win. Full table in ADR-0005.
 
 ### Cascade
 After Matches clear, surviving Candies fall down to fill empty Cells (gravity), and new Candies spawn from the top. This may create new Matches, which resolve in turn, repeating until the Board is stable.

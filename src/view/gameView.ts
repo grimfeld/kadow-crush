@@ -5,7 +5,7 @@
 import type { KAPLAYCtx } from "kaplay";
 import type { ChallengeConfig } from "../core/config.ts";
 import { Game } from "../core/game.ts";
-import type { Candy, Colour, Pos, Step } from "../core/types.ts";
+import type { Candy, Colour, Pos, SpecialType, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
 import { MenuScreen } from "./menu.ts";
 import { MusicPlayer } from "./music.ts";
@@ -175,22 +175,60 @@ export class GameView {
    * horizontal beam if the cleared cells line up on the origin's row, a vertical
    * beam if on its column, otherwise a radial flash (color bomb).
    */
-  private specialBeam(origin: Pos, cleared: Pos[]) {
-    if (cleared.length === 0) return;
+  private specialFx(special: SpecialType, origin: Pos, cleared: Pos[]) {
+    if (cleared.length === 0) {
+      playSound("special");
+      return;
+    }
     const { x: ox, y: oy } = cellCenter(this.layout, origin.row, origin.col);
-    const sameRow = cleared.every((p) => p.row === origin.row);
-    const sameCol = cleared.every((p) => p.col === origin.col);
     const cell = this.layout.cell;
     const L = this.layout.originX;
     const R = this.layout.originX + this.layout.boardW;
     const T = this.layout.originY;
     const B = this.layout.originY + this.layout.boardH;
-    if (sameRow && !sameCol) {
-      this.effects.rowWave(ox, oy, L, R, cell * 0.8, [255, 210, 90]);
-    } else if (sameCol && !sameRow) {
-      this.effects.colWave(ox, oy, T, B, cell * 0.8, [255, 210, 90]);
-    } else {
-      this.effects.flash(ox, oy, cell * 3, [120, 200, 255]);
+    const sameRow = cleared.every((p) => p.row === origin.row);
+    const sameCol = cleared.every((p) => p.col === origin.col);
+
+    switch (special) {
+      case "striped-row":
+      case "striped-col":
+        // line waves; fall back by geometry for combo cross-blasts
+        if (sameRow && !sameCol)
+          this.effects.rowWave(ox, oy, L, R, cell * 0.8, [255, 210, 90]);
+        else if (sameCol && !sameRow)
+          this.effects.colWave(ox, oy, T, B, cell * 0.8, [255, 210, 90]);
+        else {
+          // a cross / multi-line combo — fire both axes
+          this.effects.rowWave(ox, oy, L, R, cell * 0.8, [255, 210, 90]);
+          this.effects.colWave(ox, oy, T, B, cell * 0.8, [255, 210, 90]);
+        }
+        playSound("striped");
+        break;
+      case "wrapped":
+        // a 3x3 (or bigger) burst flash sized to the cleared extent
+        this.effects.flash(ox, oy, cell * 2.2, [255, 150, 80]);
+        for (const p of cleared) {
+          const { x, y } = cellCenter(this.layout, p.row, p.col);
+          this.particles.burst(x, y, [255, 170, 90], 6);
+        }
+        playSound("wrapped");
+        break;
+      case "color-bomb":
+        this.effects.flash(ox, oy, cell * 3.2, [120, 200, 255]);
+        playSound("bomb");
+        break;
+      case "fish":
+        // the fly step already animated; pop a small splash at each cleared cell
+        for (const p of cleared) {
+          const { x, y } = cellCenter(this.layout, p.row, p.col);
+          this.particles.burst(x, y, [90, 200, 255], 5);
+        }
+        playSound("fish");
+        break;
+      case "coloring":
+        this.effects.flash(ox, oy, cell * 1.6, [200, 120, 255]);
+        playSound("special");
+        break;
     }
   }
 
@@ -411,11 +449,13 @@ export class GameView {
       }
       case "special-activate":
       case "clear": {
-        playSound(step.kind === "special-activate" ? "special" : "clear");
         // ids come straight from the payload — no guessing by position
         const cells = step.kind === "clear" ? step.cells : step.cleared;
-        if (step.kind === "special-activate")
-          this.specialBeam(step.origin, step.cleared);
+        if (step.kind === "special-activate") {
+          this.specialFx(step.special, step.origin, step.cleared);
+        } else {
+          playSound("clear");
+        }
         // fruit collected toward a collect-colours goal flies to its HUD chip
         this.flyCollectedToGoal(step.ids);
         await this.popIds(cells, step.ids);
@@ -572,25 +612,36 @@ export class GameView {
         break;
       }
       case "fish-fly": {
-        // a fish darts to its target before the pop that follows
-        playSound("special");
+        // a fish darts in an arc to its target before the pop that follows
+        playSound("fish");
         const s = this.sprites.get(step.id);
         if (s) {
           const { x, y } = cellCenter(this.layout, step.to.row, step.to.col);
+          const sx = s.x;
+          const sy = s.y;
           await this.tween((t) => {
-            s.x = s.x + (x - s.x) * t * 0.5;
-            s.y = s.y + (y - s.y) * t * 0.5;
-          }, 180);
+            s.x = sx + (x - sx) * t;
+            s.y = sy + (y - sy) * t - Math.sin(t * Math.PI) * this.layout.cell * 0.8;
+            s.scale = 1 + 0.2 * Math.sin(t * Math.PI);
+          }, 220);
+          s.scale = 1;
+          // leave a little splash where it lands
+          this.particles.burst(x, y, [90, 200, 255], 6);
         }
         break;
       }
       case "recolor": {
-        // coloring candy converted these cells to a new colour (no clear)
+        // coloring candy swept these cells into a new colour (no clear) — pop a
+        // little colour-burst on each and a brief scale-pulse as it changes
         playSound("special");
-        for (const id of step.ids) {
+        const burst = BURST_COLOURS[step.colour] ?? [255, 255, 255];
+        step.ids.forEach((id) => {
           const s = this.sprites.get(id);
-          if (s) s.colour = step.colour;
-        }
+          if (s) {
+            s.colour = step.colour;
+            this.particles.burst(s.x, s.y, burst, 5);
+          }
+        });
         await this.wait(AFTER_CLEAR_MS);
         break;
       }

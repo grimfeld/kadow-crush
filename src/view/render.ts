@@ -133,6 +133,9 @@ export function drawCandy(
 
   if (isBomb) {
     drawBombRing(k, x, y, half * 0.78);
+  } else if (special === "fish") {
+    // Fish: a fish glyph on the coloured tile (no fruit emoji — would crowd).
+    k.drawText({ text: "🐠", pos: k.vec2(x, y), size: tile * 0.72, anchor: "center", color: white });
   } else {
     // emoji sized to sit comfortably INSIDE the tile (no leak)
     const emoji = COLOUR_THEMES[colour ?? 0].emoji;
@@ -148,21 +151,9 @@ export function drawCandy(
     if (special === "striped-row" || special === "striped-col") {
       drawStripes(k, x, y, half, special === "striped-row");
     } else if (special === "wrapped") {
-      // a bright wrapper ring (corners pulled in)
-      k.drawRect({
-        pos: k.vec2(x, y),
-        width: tile * 0.62,
-        height: tile * 0.62,
-        anchor: "center",
-        radius: tile * 0.1,
-        fill: false,
-        outline: { width: Math.max(2, tile * 0.1), color: k.rgb(255, 255, 255) },
-      });
-    } else if (special === "fish") {
-      k.drawText({ text: "🐟", pos: k.vec2(x, y), size: tile * 0.6, anchor: "center", color: white });
+      drawWrapper(k, x, y, half);
     } else if (special === "coloring") {
-      // a sparkle marks the coloring candy (keeps its own colour tile)
-      k.drawText({ text: "✨", pos: k.vec2(x, y - tile * 0.02), size: tile * 0.5, anchor: "center", color: white });
+      drawColoringSwirl(k, x, y, half);
     }
   }
 
@@ -209,6 +200,49 @@ function drawStripes(
       });
     }
   }
+}
+
+/** Candy-wrapper look: four white corner brackets framing the tile. */
+function drawWrapper(k: KAPLAYCtx, x: number, y: number, half: number) {
+  const white = k.rgb(255, 255, 255);
+  const L = half * 0.5; // bracket arm length
+  const t = Math.max(2, half * 0.16); // bracket thickness
+  const e = half * 0.72; // distance from centre to the bracket corner
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1]) {
+      const cx = x + sx * e;
+      const cy = y + sy * e;
+      // horizontal arm
+      k.drawRect({
+        pos: k.vec2(cx - (sx < 0 ? 0 : L), cy - t / 2),
+        width: L,
+        height: t,
+        color: white,
+        opacity: 0.95,
+      });
+      // vertical arm
+      k.drawRect({
+        pos: k.vec2(cx - t / 2, cy - (sy < 0 ? 0 : L)),
+        width: t,
+        height: L,
+        color: white,
+        opacity: 0.95,
+      });
+    }
+}
+
+/** Coloring candy: a rainbow ring of dots (it transforms colours). */
+function drawColoringSwirl(k: KAPLAYCtx, x: number, y: number, half: number) {
+  const r = half * 0.62;
+  for (let i = 0; i < 8; i++) {
+    const a = (Math.PI / 4) * i;
+    k.drawCircle({
+      pos: k.vec2(x + Math.cos(a) * r, y + Math.sin(a) * r),
+      radius: half * 0.16,
+      color: hsv(k, (i / 8) * 360),
+    });
+  }
+  k.drawCircle({ pos: k.vec2(x, y), radius: half * 0.22, color: k.rgb(255, 255, 255), opacity: 0.85 });
 }
 
 function drawBombRing(k: KAPLAYCtx, x: number, y: number, r: number) {

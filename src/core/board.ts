@@ -134,36 +134,6 @@ export class Board {
     return n;
   }
 
-  /**
-   * Spread jam from the just-swapped cells: any swapped cell that is jammed
-   * coats its orthogonally-adjacent SAME-colour candies. Returns the Step, or
-   * null if nothing new was coated.
-   */
-  spreadJam(a: Pos, b: Pos): Step | null {
-    const newly: Pos[] = [];
-    for (const p of [a, b]) {
-      if (!this.jam[p.row]?.[p.col]) continue;
-      const colour = this.grid[p.row][p.col]?.colour;
-      if (colour == null) continue;
-      for (const [dr, dc] of [
-        [1, 0],
-        [-1, 0],
-        [0, 1],
-        [0, -1],
-      ]) {
-        const nr = p.row + dr;
-        const nc = p.col + dc;
-        if (!this.inBounds(nr, nc)) continue;
-        const cell = this.grid[nr][nc];
-        if (cell && cell.colour === colour && !cell.special && !this.immovable(cell) &&
-            !this.jam[nr][nc]) {
-          this.jam[nr][nc] = true;
-          newly.push({ row: nr, col: nc });
-        }
-      }
-    }
-    return newly.length ? { kind: "jam-spread", cells: newly } : null;
-  }
 
   /** Build the Jelly layer from the challenge's spec (pattern + layers). */
   private buildJelly(spec: JellySpec | undefined): number[][] {
@@ -1122,9 +1092,10 @@ export class Board {
         chain.push({ pos: { ...p }, special: cell.special });
       }
     }
-    const { cells: cl, ids, jelly } = this.clearCells(cells, cleared);
+    const { cells: cl, ids, jelly, jam } = this.clearCells(cells, cleared);
     steps.push({ kind: "special-activate", origin, cleared: cl, ids, special });
     this.pushJelly(steps, jelly);
+    this.pushJam(steps, jam);
     this.clearAdjacentBlockers(cl, steps, cleared);
     this.thawAdjacentFrozen(cl, steps);
     this.hitAdjacentBoxes(cl, steps);
@@ -1209,11 +1180,13 @@ export class Board {
     cells: Pos[];
     ids: number[];
     jelly: { cells: Pos[]; levels: number[] };
+    jam: Pos[];
   } {
     const outCells: Pos[] = [];
     const ids: number[] = [];
     const jellyCells: Pos[] = [];
     const jellyLevels: number[] = [];
+    let anyJam = false;
     for (const p of cells) {
       const candy = this.grid[p.row][p.col];
       if (!candy) continue;
@@ -1236,6 +1209,7 @@ export class Board {
       if (candy.colour !== null) cleared.push(candy.colour);
       outCells.push(p);
       ids.push(candy.id);
+      if (this.jam[p.row]?.[p.col]) anyJam = true;
       this.grid[p.row][p.col] = null;
       // A clear over a jellied cell removes one layer.
       if (this.jelly[p.row][p.col] > 0) {
@@ -1244,7 +1218,29 @@ export class Board {
         jellyLevels.push(this.jelly[p.row][p.col]);
       }
     }
-    return { cells: outCells, ids, jelly: { cells: jellyCells, levels: jellyLevels } };
+    // Spread-the-Jam (CC Soda rule): if any cleared cell was jammed, EVERY cell
+    // in this clear becomes jam. (Covers both a match that includes a jam tile
+    // and a Special activated from a jam tile — both flow through clearCells.)
+    const newJam: Pos[] = [];
+    if (anyJam) {
+      for (const p of outCells) {
+        if (!this.jam[p.row][p.col]) {
+          this.jam[p.row][p.col] = true;
+          newJam.push(p);
+        }
+      }
+    }
+    return {
+      cells: outCells,
+      ids,
+      jelly: { cells: jellyCells, levels: jellyLevels },
+      jam: newJam,
+    };
+  }
+
+  /** Emit a jam-spread Step for cells newly coated by the last clear. */
+  private pushJam(steps: Step[], jam: Pos[]) {
+    if (jam.length) steps.push({ kind: "jam-spread", cells: jam });
   }
 
   /** Emit a jelly-clear Step for any layers removed by the last clear. */
@@ -1536,6 +1532,7 @@ export class Board {
           bySpecial: false,
         });
         this.pushJelly(steps, cleared2.jelly);
+        this.pushJam(steps, cleared2.jam);
         this.clearAdjacentBlockers(cleared2.cells, steps, cleared);
         this.thawAdjacentFrozen(cleared2.cells, steps);
         this.hitAdjacentBoxes(cleared2.cells, steps);

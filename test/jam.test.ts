@@ -27,32 +27,40 @@ describe("Jam (Spread-the-Jam)", () => {
       expect(new Board(makeRng(seed), cfg).hasLegalMove()).toBe(true);
   });
 
-  it("swapping a jammed candy jams its same-colour orthogonal neighbours", () => {
+  it("a match including a jam tile turns all matched cells into jam", () => {
     const b = new Board(makeRng(2), cfg);
-    // wipe jam, craft a controlled patch: jam (4,3) colour 0; neighbours (4,2)
-    // and (5,3) are colour 0 too, (4,4) is colour 1.
+    // wipe jam + isolate rows 3..5 so only the crafted match forms
     for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) b.jam[r][c] = false;
-    b.grid[4][3] = { id: 9000, colour: 0, special: null };
-    b.grid[4][2] = { id: 9001, colour: 0, special: null };
-    b.grid[5][3] = { id: 9002, colour: 0, special: null };
-    b.grid[4][4] = { id: 9003, colour: 1, special: null };
-    b.grid[3][3] = { id: 9004, colour: 1, special: null }; // fourth neighbour, different colour
-    b.jam[4][3] = true;
-    const before = b.jammedCount();
-    const step = b.spreadJam({ row: 4, col: 3 }, { row: 4, col: 4 });
-    expect(step).not.toBeNull();
-    expect(step!.kind).toBe("jam-spread");
-    // the two same-colour neighbours get jammed; the colour-1 one does not
+    for (let r = 3; r <= 5; r++)
+      for (let c = 0; c <= 5; c++) b.grid[r][c] = { id: r * 10 + c, colour: 1, special: null };
+    // colour-0 at (4,1),(4,2), and (5,3); swap (5,3)->(4,3) completes 0,0,0 at row4 c1..3
+    b.grid[4][1] = { id: 941, colour: 0, special: null };
+    b.grid[4][2] = { id: 942, colour: 0, special: null };
+    b.grid[4][3] = { id: 943, colour: 1, special: null };
+    b.grid[5][3] = { id: 953, colour: 0, special: null };
+    b.jam[4][1] = true; // one of the matched cells is jammed
+    const res = b.trySwap({ row: 5, col: 3 }, { row: 4, col: 3 });
+    expect(res.consumedMove).toBe(true);
+    expect(res.steps.some((s) => s.kind === "jam-spread")).toBe(true);
+    // all three matched cells are now jam (the match included a jam tile)
+    expect(b.jam[4][1]).toBe(true);
     expect(b.jam[4][2]).toBe(true);
-    expect(b.jam[5][3]).toBe(true);
-    expect(b.jam[4][4]).toBe(false);
-    expect(b.jammedCount()).toBe(before + 2);
+    expect(b.jam[4][3]).toBe(true);
   });
 
-  it("returns null when the swapped cells aren't jammed", () => {
+  it("a match with no jam tile does not create jam", () => {
     const b = new Board(makeRng(2), cfg);
     for (let r = 0; r < b.rows; r++) for (let c = 0; c < b.cols; c++) b.jam[r][c] = false;
-    expect(b.spreadJam({ row: 0, col: 0 }, { row: 0, col: 1 })).toBeNull();
+    for (let r = 3; r <= 5; r++)
+      for (let c = 0; c <= 5; c++) b.grid[r][c] = { id: r * 10 + c, colour: 1, special: null };
+    b.grid[4][1] = { id: 941, colour: 0, special: null };
+    b.grid[4][2] = { id: 942, colour: 0, special: null };
+    b.grid[4][3] = { id: 943, colour: 1, special: null };
+    b.grid[5][3] = { id: 953, colour: 0, special: null };
+    // no jam anywhere
+    const res = b.trySwap({ row: 5, col: 3 }, { row: 4, col: 3 });
+    expect(res.consumedMove).toBe(true);
+    expect(res.steps.some((s) => s.kind === "jam-spread")).toBe(false);
   });
 
   it("the Game wins once jam covers the target count", () => {

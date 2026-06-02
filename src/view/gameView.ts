@@ -733,14 +733,12 @@ export class GameView {
         break;
       }
       case "jam-spread": {
-        // jam crept onto same-colour neighbours of a swapped jammed candy
-        playSound("special");
+        // a match (or special blast) that touched jam coats those cells in jam
         for (const p of step.cells) {
           this.viewJam[p.row][p.col] = true;
           const { x, y } = cellCenter(this.layout, p.row, p.col);
-          this.particles.burst(x, y, JAM_FILL, 5);
+          this.particles.burst(x, y, JAM_FILL, 4);
         }
-        await this.wait(AFTER_CLEAR_MS);
         break;
       }
       case "item-free": {

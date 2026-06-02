@@ -152,9 +152,6 @@ export class Game {
         const spread = this.board.spreadChocolate();
         if (spread) steps.push(spread);
       }
-      // Jam spreads from a swapped jammed candy to its same-colour neighbours.
-      const jam = this.board.spreadJam(a, b);
-      if (jam) steps.push(jam);
 
       // Sugar Crush: objective met with moves to spare → blow the rest on a
       // striped-candy finale, then the level ends (movesLeft → 0).

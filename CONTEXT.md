@@ -123,7 +123,7 @@ A trapped collectible locked inside breakable casing — immovable and gravity-b
 An immovable, gravity-blocking tile (no Candy), placed as a bottom-anchored block. An adjacent Match clears one tile; on any Move that clears **no** chocolate it **spreads**, turning a neighbouring Candy cell into chocolate (capped ~55% of the board). Clear at least one piece each turn to keep it shrinking. Cleared when none remain.
 
 ### Jam (Spread-the-Jam)
-A coating on a Candy (cell-bound, like Jelly). Swapping a jammed Candy spreads the jam onto its orthogonally-adjacent **same-colour** Candies. The goal is to grow the jam to cover a target number of cells.
+A coating on a Cell (cell-bound, like Jelly). Spreads by the Candy Crush Soda rule: if a Match includes at least one jammed Cell, **all** the matched Cells become jam; likewise, when a Special activated from a jammed Cell clears Cells, those become jam. (It is not tied to swapping.) The goal is to grow the jam to cover a target number of Cells.
 
 ### Generator
 A machine above certain columns. Its column refills with normal Candies, but every Nth Candy it emits becomes a chosen Special (configured per Challenge as `{col, special, every}`) — steady Special pressure for harder levels. View-only: a machine icon is drawn above each generator column.

@@ -68,6 +68,7 @@ const CARD_H = 116;
 
 export class MenuScreen {
   private cards: CardRect[] = [];
+  private helpRect = { x: 0, y: 0, w: 0, h: 0 };
   private musicRect = { x: 0, y: 0, w: 0, h: 0 };
   // Vertical scroll offset of the card grid (px), clamped to [0, maxScroll].
   private scrollY = 0;
@@ -106,6 +107,12 @@ export class MenuScreen {
     return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
   }
 
+  /** Whether (px,py) hits the candy/tile guide chip (caller opens the modal). */
+  hitHelp(px: number, py: number): boolean {
+    const r = this.helpRect;
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+
   /** @param musicLabel current music selection label ("Off" or a track name). */
   draw(musicLabel: string) {
     const k = this.k;
@@ -140,6 +147,9 @@ export class MenuScreen {
       color: dark,
       anchor: "center",
     });
+
+    // Guide chip (top-left) — tap to open the candy/tile reference.
+    this.drawHelpChip(W, H, dark);
 
     // Music chip (top-right) — tap to cycle tracks / off.
     this.drawMusicChip(musicLabel, W, H, dark, accent);
@@ -210,6 +220,41 @@ export class MenuScreen {
       radius: 1.5,
       color: accent,
       opacity: 0.5,
+    });
+  }
+
+  private drawHelpChip(
+    W: number,
+    H: number,
+    dark: ReturnType<KAPLAYCtx["rgb"]>,
+  ) {
+    const k = this.k;
+    const h = Math.max(30, Math.min(40, H * 0.05));
+    const text = "?  Guide";
+    const size = h * 0.42;
+    const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
+    const w = Math.min(W * 0.38, m.width + h * 1.0);
+    const x = W * 0.05;
+    const y = Math.max(8, H * 0.018);
+    this.helpRect = { x, y, w, h };
+    k.drawRect({
+      pos: k.vec2(x, y),
+      width: w,
+      height: h,
+      radius: h / 2,
+      color: k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
+      opacity: 0.95,
+      outline: {
+        width: 2,
+        color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]),
+      },
+    });
+    k.drawText({
+      text,
+      pos: k.vec2(x + w / 2, y + h / 2),
+      size,
+      color: dark,
+      anchor: "center",
     });
   }
 

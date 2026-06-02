@@ -9,6 +9,7 @@ import type { Candy, Colour, Pos, SpecialType, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
 import { MenuScreen } from "./menu.ts";
 import { MusicPlayer } from "./music.ts";
+import { ReferenceModal } from "./reference.ts";
 import { TutorialScreen } from "./tutorial.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import { Effects } from "./effects.ts";
@@ -73,6 +74,7 @@ export class GameView {
   private mode: "menu" | "tutorial" | "play" = "menu";
   private menu: MenuScreen;
   private tutorial: TutorialScreen;
+  private reference: ReferenceModal;
   // The challenge chosen on the menu, shown on the tutorial screen, started on Play.
   private pending: ChallengeConfig | null = null;
   private game!: Game; // defined once a Challenge is picked
@@ -148,6 +150,7 @@ export class GameView {
   constructor(private k: KAPLAYCtx) {
     this.menu = new MenuScreen(k);
     this.tutorial = new TutorialScreen(k);
+    this.reference = new ReferenceModal(k);
     this.particles = new Particles(k);
     this.effects = new Effects(k);
     this.bind();
@@ -341,6 +344,7 @@ export class GameView {
     this.selected = null;
     this.dragStart = null;
     this.menuDrag = null;
+    this.reference.close();
     this.finaleMoves = -1;
     this.sprites.clear();
   }
@@ -943,9 +947,11 @@ export class GameView {
   private bind() {
     const k = this.k;
 
-    // Wheel/trackpad scrolls the menu grid.
+    // Wheel/trackpad scrolls the menu grid or the reference modal.
     k.onScroll((delta) => {
-      if (this.mode === "menu") this.menu.scrollBy(delta.y);
+      if (this.mode !== "menu") return;
+      if (this.reference.isOpen()) this.reference.scrollBy(delta.y);
+      else this.menu.scrollBy(delta.y);
     });
 
     k.onMousePress(() => {
@@ -953,6 +959,22 @@ export class GameView {
       this.music.unlock();
       if (this.mode === "menu") {
         const p = k.mousePos();
+        if (this.reference.isOpen()) {
+          if (this.reference.hitClose(p.x, p.y)) {
+            playSound("swap");
+            this.reference.close();
+            this.menuDrag = null;
+            return;
+          }
+          this.menuDrag = { startY: p.y, lastY: p.y, moved: false };
+          return;
+        }
+        if (this.menu.hitHelp(p.x, p.y)) {
+          playSound("swap");
+          this.reference.open();
+          this.menuDrag = null;
+          return;
+        }
         // music chip first — it sits above the grid
         if (this.menu.hitMusic(p.x, p.y)) {
           playSound("swap");
@@ -1019,7 +1041,10 @@ export class GameView {
       const dy = p.y - this.menuDrag.lastY;
       this.menuDrag.lastY = p.y;
       if (Math.abs(p.y - this.menuDrag.startY) > 6) this.menuDrag.moved = true;
-      if (this.menuDrag.moved) this.menu.scrollBy(-dy); // drag down → content down
+      if (this.menuDrag.moved) {
+        if (this.reference.isOpen()) this.reference.scrollBy(-dy);
+        else this.menu.scrollBy(-dy);
+      }
     });
 
     k.onMouseRelease(() => {
@@ -1027,6 +1052,7 @@ export class GameView {
       if (this.mode === "menu") {
         const drag = this.menuDrag;
         this.menuDrag = null;
+        if (this.reference.isOpen()) return;
         if (drag && !drag.moved) {
           const p = k.mousePos();
           const cfg = this.menu.hitTest(p.x, p.y);
@@ -1173,6 +1199,7 @@ export class GameView {
   draw() {
     if (this.mode === "menu") {
       this.menu.draw(this.music.label);
+      this.reference.draw();
       this.particles.draw();
       return;
     }

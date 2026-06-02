@@ -17,6 +17,11 @@ export interface Candy {
    * clears/Specials, and is collected when it reaches the bottom row.
    */
   ingredient?: boolean;
+  /**
+   * Blocker: immovable, never matches, blocks gravity (candies stack on top),
+   * and is removed when a Match clears in an orthogonally-adjacent cell.
+   */
+  blocker?: boolean;
 }
 
 export interface Pos {
@@ -44,6 +49,8 @@ export type Step =
   | { kind: "jelly-clear"; cells: Pos[]; levels: number[] }
   // Ingredients reached the bottom row and were collected (left the board).
   | { kind: "ingredient-collect"; cells: Pos[]; ids: number[] }
+  // Blockers removed by an adjacent Match.
+  | { kind: "blocker-clear"; cells: Pos[]; ids: number[] }
   | { kind: "reshuffle"; layout: (Candy | null)[][] };
 
 export interface Objective {

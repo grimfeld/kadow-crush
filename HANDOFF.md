@@ -1,12 +1,13 @@
 # Kadow Crush — Handoff
 
-Mobile-first match-3 (Candy Crush clone). Kaplay + TypeScript + Vite. Single random level. Demo-ready.
+Mobile-first match-3 (Candy Crush clone). Kaplay + TypeScript + Vite. Level-select menu of **challenge grids**. Demo-ready.
 
 ## Status: working, demo-ready
 
-- Core gameplay, specials, objective, win/lose, mobile UI, sound, particles — all DONE and verified in-browser.
-- `npm run dev` → playable. `npm test` → 11/11 green. `npm run build` → clean.
-- Last task: explained core↔Kaplay communication (no code change). Before that: fixed a tile vanish/reappear cascade bug.
+- Core gameplay, specials, objective, win/lose, mobile UI, sound, particles — all DONE.
+- **Challenge grids (ADR-0002)**: level-select menu + 6 challenges across 4 objective types (collect-colours, score, clear-jelly, collect-ingredients) with per-challenge board size/colour count and immovable blockers. Per-session seeded boards.
+- `npm run dev` → playable. `npm test` → 31/31 green. `npm run build` → clean (~79 KB gzip).
+- ⚠️ Challenge-grids work is verified by typecheck + unit tests + careful review, but **not yet visually confirmed in-browser** — Chromium download was blocked by the web-session sandbox network policy, so `node smoke.mjs` could not run here. Run it on a machine with Playwright's Chromium to confirm rendering/animation of jelly, ingredients, and blockers.
 
 ## Architecture (ADR-0001)
 

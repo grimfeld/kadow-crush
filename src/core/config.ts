@@ -30,6 +30,11 @@ export interface ChallengeConfig {
    * challenges). They fall with gravity and are collected at the bottom row.
    */
   ingredients?: number;
+  /**
+   * Number of immovable Blockers placed along the bottom row at start. Kept on
+   * the bottom row so they never trap unfillable holes above them.
+   */
+  blockers?: number;
 }
 
 /** The default Challenge — reproduces the original single level exactly. */
@@ -82,6 +87,28 @@ export const CHALLENGES: ChallengeConfig[] = [
     moves: 24,
     objective: { kind: "collect-ingredients", count: 3 },
     ingredients: 3,
+  },
+  {
+    id: "locked-vault",
+    name: "Locked Vault",
+    blurb: "Collect two colours with blockers crowding the floor.",
+    rows: 8,
+    cols: 8,
+    colourCount: 5,
+    moves: 22,
+    objective: { kind: "collect-colours", targetCount: 2, quota: 20 },
+    blockers: 4,
+  },
+  {
+    id: "grand-finale",
+    name: "Grand Finale",
+    blurb: "Big board, more colours, blockers — chase a high score.",
+    rows: 8,
+    cols: 8,
+    colourCount: 6,
+    moves: 25,
+    objective: { kind: "score", target: 9000 },
+    blockers: 3,
   },
 ];
 

@@ -5,6 +5,8 @@
 import type { KAPLAYCtx } from "kaplay";
 import type { Candy, Colour } from "../core/types.ts";
 import {
+  BLOCKER_EMOJI,
+  BLOCKER_FILL,
   BOMB_FILL,
   CELL_BG,
   COLOUR_THEMES,
@@ -32,9 +34,29 @@ export function drawCandy(
   cell: number,
   scale = 1,
   ingredient = false,
+  blocker = false,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
+
+  // Blocker: a dull immovable stone tile.
+  if (blocker) {
+    k.drawRect({
+      pos: k.vec2(x - half, y - half),
+      width: tile,
+      height: tile,
+      radius: tile * 0.16,
+      color: k.rgb(BLOCKER_FILL[0], BLOCKER_FILL[1], BLOCKER_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.05), color: k.rgb(90, 90, 100) },
+    });
+    k.drawText({
+      text: BLOCKER_EMOJI,
+      pos: k.vec2(x, y),
+      size: tile * 0.6,
+      anchor: "center",
+    });
+    return;
+  }
 
   // Ingredient: a warm tile with a fruit glyph, no colour/special behaviour.
   if (ingredient) {

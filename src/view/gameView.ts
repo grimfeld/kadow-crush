@@ -30,6 +30,7 @@ interface Sprite {
   colour: Colour | null;
   special: Candy["special"];
   ingredient: boolean;
+  blocker: boolean;
   x: number;
   y: number;
   scale: number;
@@ -133,6 +134,7 @@ export class GameView {
           colour: candy.colour,
           special: candy.special,
           ingredient: !!candy.ingredient,
+          blocker: !!candy.blocker,
           x,
           y,
           scale: 1,
@@ -285,6 +287,7 @@ export class GameView {
             colour: sp.colour,
             special: null,
             ingredient: false,
+            blocker: false,
             x,
             y: startY,
             scale: 1,
@@ -307,6 +310,12 @@ export class GameView {
         // ingredients leave at the bottom — pop them out like a clear
         playSound("special");
         this.viewIngredients += step.cells.length;
+        await this.popIds(step.cells, step.ids);
+        break;
+      }
+      case "blocker-clear": {
+        // an adjacent match broke these blockers — pop them out
+        playSound("clear");
         await this.popIds(step.cells, step.ids);
         break;
       }
@@ -557,6 +566,7 @@ export class GameView {
         this.layout.cell,
         s.scale,
         s.ingredient,
+        s.blocker,
       );
 
     // particle bursts on top of candies

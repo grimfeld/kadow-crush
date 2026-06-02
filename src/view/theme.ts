@@ -57,6 +57,10 @@ export const BOMB_FILL: [number, number, number] = [70, 70, 90];
 export const INGREDIENT_FILL: [number, number, number] = [255, 196, 160];
 export const INGREDIENT_EMOJI = "🍒";
 
+// Blocker (immovable obstacle) — a dull stone tile that reads as "not a candy".
+export const BLOCKER_FILL: [number, number, number] = [150, 150, 160];
+export const BLOCKER_EMOJI = "🧱";
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

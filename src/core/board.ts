@@ -35,6 +35,7 @@ export class Board {
   readonly cols: number;
   readonly colourCount: number;
   private readonly ingredientCount: number;
+  private readonly blockerCount: number;
   private nextId = 1;
 
   constructor(
@@ -45,6 +46,7 @@ export class Board {
     this.cols = cfg.cols;
     this.colourCount = cfg.colourCount;
     this.ingredientCount = cfg.ingredients ?? 0;
+    this.blockerCount = cfg.blockers ?? 0;
     this.grid = this.generateSolvableGrid();
     const layers = cfg.jelly ?? 0;
     this.jelly = Array.from({ length: this.rows }, () =>
@@ -74,15 +76,34 @@ export class Board {
     return { id: this.nextId++, colour: null, special: null, ingredient: true };
   }
 
+  private newBlocker(): Candy {
+    return { id: this.nextId++, colour: null, special: null, blocker: true };
+  }
+
   /** Fill with random colours, no pre-existing match, at least one legal move. */
   private generateSolvableGrid(): Grid {
     for (;;) {
       const grid = this.fillNoMatches();
+      this.placeBlockers(grid);
       this.placeIngredients(grid);
-      // Ingredients are null-colour, so they can only break runs, never make
-      // one — the no-match guarantee still holds. Re-check the legal move.
+      // Ingredients/Blockers are null-colour, so they can only break runs, never
+      // make one — the no-match guarantee still holds. Re-check the legal move.
       if (this.hasLegalMoveOn(grid)) return grid;
     }
+  }
+
+  /** Place Blockers on distinct bottom-row columns (kept off other rows so no
+   *  unfillable hole is ever trapped above them). */
+  private placeBlockers(grid: Grid) {
+    if (this.blockerCount <= 0) return;
+    const r = this.rows - 1;
+    const cols = Array.from({ length: this.cols }, (_, c) => c);
+    for (let i = cols.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [cols[i], cols[j]] = [cols[j], cols[i]];
+    }
+    const n = Math.min(this.blockerCount, this.cols);
+    for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newBlocker();
   }
 
   /** Drop the configured Ingredients onto distinct top-row columns. */
@@ -198,6 +219,8 @@ export class Board {
           const nr = r + dr;
           const nc = c + dc;
           if (!this.inBounds(nr, nc)) continue;
+          // Blockers can't be swapped — skip pairs that touch one.
+          if (grid[r][c]?.blocker || grid[nr][nc]?.blocker) continue;
           this.swapCells(grid, r, c, nr, nc);
           const legal =
             this.isSpecialSwap(grid, { row: r, col: c }, { row: nr, col: nc }) ||
@@ -232,6 +255,10 @@ export class Board {
   trySwap(a: Pos, b: Pos): { steps: Step[]; consumedMove: boolean; cleared: Colour[] } {
     const cleared: Colour[] = [];
     if (!adjacent(a, b) || samePos(a, b)) {
+      return { steps: [], consumedMove: false, cleared };
+    }
+    // Blockers are immovable — a swap touching one is a no-op.
+    if (this.grid[a.row][a.col]?.blocker || this.grid[b.row][b.col]?.blocker) {
       return { steps: [], consumedMove: false, cleared };
     }
 
@@ -277,6 +304,7 @@ export class Board {
       const { cells, ids, jelly } = this.clearCells(targetCells, cleared);
       steps.push({ kind: "special-activate", origin, cleared: cells, ids });
       this.pushJelly(steps, jelly);
+      this.clearAdjacentBlockers(cells, steps);
     };
     // Snapshot which positions hold specials before clearing.
     const aSpecial = ca?.special != null;
@@ -350,6 +378,35 @@ export class Board {
       steps.push({ kind: "jelly-clear", cells: jelly.cells, levels: jelly.levels });
   }
 
+  /** Remove Blockers orthogonally adjacent to the just-cleared cells. */
+  private clearAdjacentBlockers(clearedCells: Pos[], steps: Step[]) {
+    if (this.blockerCount <= 0) return;
+    const seen = new Set<string>();
+    const cells: Pos[] = [];
+    const ids: number[] = [];
+    for (const p of clearedCells) {
+      for (const [dr, dc] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nr = p.row + dr;
+        const nc = p.col + dc;
+        if (!this.inBounds(nr, nc)) continue;
+        const cell = this.grid[nr][nc];
+        const k = `${nr},${nc}`;
+        if (cell?.blocker && !seen.has(k)) {
+          seen.add(k);
+          cells.push({ row: nr, col: nc });
+          ids.push(cell.id);
+          this.grid[nr][nc] = null;
+        }
+      }
+    }
+    if (cells.length) steps.push({ kind: "blocker-clear", cells, ids });
+  }
+
   /** Resolve cascades until the board is stable. Appends Steps. */
   private resolve(steps: Step[], swap: { swapA: Pos; swapB: Pos }, cleared: Colour[]) {
     let firstPass = true;
@@ -375,6 +432,7 @@ export class Board {
           bySpecial: false,
         });
         this.pushJelly(steps, cleared2.jelly);
+        this.clearAdjacentBlockers(cleared2.cells, steps);
 
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {
@@ -470,7 +528,11 @@ export class Board {
     return out;
   }
 
-  /** Drop candies into empty cells below them. Appends a fall Step. */
+  /**
+   * Drop candies into empty cells below them. Blockers are immovable walls:
+   * candies compact to the bottom of each segment between blockers/floor, and
+   * the blockers themselves stay put. Appends a fall Step.
+   */
   private applyGravity(steps: Step[]) {
     const moves: { id: number; from: Pos; to: Pos }[] = [];
     for (let c = 0; c < this.cols; c++) {
@@ -478,6 +540,11 @@ export class Board {
       for (let r = this.rows - 1; r >= 0; r--) {
         const candy = this.grid[r][c];
         if (!candy) continue;
+        if (candy.blocker) {
+          // wall: stays at r; the next segment fills above it
+          write = r - 1;
+          continue;
+        }
         if (write !== r) {
           this.grid[write][c] = candy;
           this.grid[r][c] = null;
@@ -489,12 +556,18 @@ export class Board {
     if (moves.length) steps.push({ kind: "fall", moves });
   }
 
-  /** Fill empty top cells with new random candies. Appends a spawn Step. */
+  /**
+   * Fill empty cells with new random candies, entering from the top. New candies
+   * cannot fall past a Blocker, so a column fills only down to its first
+   * Blocker. (Blockers live on the bottom row, so everything above fills.)
+   */
   private spawnNew(steps: Step[]) {
     const spawns: { id: number; colour: Colour; at: Pos }[] = [];
     for (let c = 0; c < this.cols; c++) {
       for (let r = 0; r < this.rows; r++) {
-        if (this.grid[r][c] !== null) continue;
+        const cell = this.grid[r][c];
+        if (cell?.blocker) break; // sealed below here
+        if (cell !== null) continue;
         const colour = this.rng.int(this.colourCount);
         const candy = this.newCandy(colour);
         this.grid[r][c] = candy;
@@ -506,25 +579,35 @@ export class Board {
 
   // ---- reshuffle ----------------------------------------------------------
 
-  /** Rearrange into a solvable, match-free layout. Returns a reshuffle Step. */
+  /**
+   * Rearrange into a solvable, match-free layout. Blockers and Ingredients are
+   * fixed in place; only the ordinary colour candies are shuffled among the
+   * remaining cells. Returns a reshuffle Step.
+   */
   reshuffle(): Step {
-    const candies: Candy[] = [];
+    const movable: Candy[] = [];
+    const slots: Pos[] = [];
     for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++)
-        if (this.grid[r][c]) candies.push(this.grid[r][c]!);
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (!cell || cell.blocker || cell.ingredient) continue;
+        movable.push(cell);
+        slots.push({ row: r, col: c });
+      }
 
     for (;;) {
       // Fisher–Yates with the seeded rng.
-      for (let i = candies.length - 1; i > 0; i--) {
+      for (let i = movable.length - 1; i > 0; i--) {
         const j = this.rng.int(i + 1);
-        [candies[i], candies[j]] = [candies[j], candies[i]];
+        [movable[i], movable[j]] = [movable[j], movable[i]];
       }
-      const grid: Grid = Array.from({ length: this.rows }, () =>
-        Array<Candy | null>(this.cols).fill(null),
+      // Start from the fixed occupants, then drop the shuffled candies in.
+      const grid: Grid = this.grid.map((row) =>
+        row.map((cell) =>
+          cell && (cell.blocker || cell.ingredient) ? cell : null,
+        ),
       );
-      let k = 0;
-      for (let r = 0; r < this.rows; r++)
-        for (let c = 0; c < this.cols; c++) grid[r][c] = candies[k++];
+      slots.forEach((p, k) => (grid[p.row][p.col] = movable[k]));
       if (!this.hasAnyMatch(grid) && this.hasLegalMoveOn(grid)) {
         this.grid = grid;
         return { kind: "reshuffle", layout: grid.map((row) => row.slice()) };

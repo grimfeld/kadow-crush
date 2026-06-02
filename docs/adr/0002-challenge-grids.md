@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted (in progress) — supersedes the single-level assumption baked into
-ADR-0001's prose, not its architecture.
+Accepted — supersedes the single-level assumption baked into ADR-0001's prose,
+not its architecture. All four objective types, blockers, board-param variation,
+and the menu are implemented (six challenges shipped).
 
 ## Context
 
@@ -62,8 +63,13 @@ view replays — they do not add new calls from core to view:
 - **Ingredients** — non-matching pieces that fall with gravity and are
   *collected* when gravity pushes them past the bottom row. New step:
   `ingredient-collect`.
-- **Blockers** — immovable cell occupants that never match, block gravity, and
-  are cleared when an adjacent match touches them. New step: `blocker-clear`.
+- **Blockers** — immovable cell occupants that never match, block gravity
+  (candies stack on top; gravity is segmented per column), and are cleared when
+  a Match clears in an orthogonally-adjacent cell. New step: `blocker-clear`.
+  Blockers are placed only on the **bottom row**, which guarantees no
+  unfillable hole is ever trapped above one (and so the resolve loop always
+  terminates). A general mid-board placement would need segment-aware refill and
+  is out of scope.
 
 ### 4. The menu is a view-level screen
 

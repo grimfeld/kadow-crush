@@ -54,6 +54,8 @@ const DROP_OUT_MS = 420; // ingredient slides off the bottom of the board
 const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
 const END_OVERLAY_DELAY = 0.9; // seconds to watch the final board before the modal
+const WIN_CELEBRATE_SECS = 2.6; // how long confetti keeps showering on a win
+const WIN_WAVE_GAP = 0.4; // gap between confetti rain waves
 
 export class GameView {
   private mode: "menu" | "tutorial" | "play" = "menu";
@@ -89,6 +91,11 @@ export class GameView {
   // last clears/falls are visible. Counts down from END_OVERLAY_DELAY once the
   // outcome is decided.
   private endHold = 0;
+  // Win celebration: seconds of confetti showers still to fire, a timer to space
+  // the waves out, and a 0→1 ramp that pops the overlay in.
+  private celebrateLeft = 0;
+  private nextWaveIn = 0;
+  private overlayPop = 0;
 
   constructor(private k: KAPLAYCtx) {
     this.menu = new MenuScreen(k);
@@ -126,6 +133,9 @@ export class GameView {
     this.dragStart = null;
     this.prevOutcome = "playing";
     this.endHold = 0;
+    this.celebrateLeft = 0;
+    this.nextWaveIn = 0;
+    this.overlayPop = 0;
     this.sprites.clear();
     this.rebuildFromBoard();
     this.mode = "play";
@@ -647,12 +657,41 @@ export class GameView {
       if (this.prevOutcome === "playing") {
         // first frame the result is visible at rest — begin the linger
         this.endHold = END_OVERLAY_DELAY;
-        if (this.game.outcome() === "won") playSound("win");
-        else playSound("lose");
+        const won = this.game.outcome() === "won";
+        if (won) {
+          playSound("win");
+          // immediate burst from the board centre, then a sustained shower
+          this.particles.confettiRain(this.k.width(), 80);
+          this.particles.confettiPop(
+            this.k.width() / 2,
+            this.k.height() * 0.55,
+            48,
+          );
+          this.celebrateLeft = WIN_CELEBRATE_SECS;
+          this.nextWaveIn = WIN_WAVE_GAP;
+        } else {
+          playSound("lose");
+        }
         this.prevOutcome = this.game.outcome();
       } else if (this.endHold > 0) {
         this.endHold = Math.max(0, this.endHold - dtSeconds);
       }
+    }
+
+    // Confetti showers + a second celebratory pop when the modal appears.
+    if (this.celebrateLeft > 0) {
+      this.celebrateLeft = Math.max(0, this.celebrateLeft - dtSeconds);
+      this.nextWaveIn -= dtSeconds;
+      if (this.nextWaveIn <= 0) {
+        this.particles.confettiRain(this.k.width(), 50);
+        this.nextWaveIn = WIN_WAVE_GAP;
+      }
+    }
+    // Overlay pop-in ramp (eased in draw); only climbs once the modal is shown.
+    if (this.game.outcome() === "won" && !this.busy && this.endHold <= 0) {
+      if (this.overlayPop === 0)
+        this.particles.confettiPop(this.k.width() / 2, this.k.height() / 2, 40);
+      this.overlayPop = Math.min(1, this.overlayPop + dtSeconds * 3.5);
     }
   }
 
@@ -767,9 +806,6 @@ export class GameView {
         s.boxHits,
       );
 
-    // particle bursts on top of candies
-    this.particles.draw();
-
     this.drawHud();
 
     // The end overlay appears only after the linger (tick handles the sting and
@@ -777,6 +813,10 @@ export class GameView {
     const outcome = this.game.outcome();
     if (outcome !== "playing" && !this.busy && this.endHold <= 0)
       this.drawOverlay(outcome === "won");
+
+    // Particles last so clear-bursts and the win confetti shower render on top
+    // of the board, HUD, and the win overlay.
+    this.particles.draw();
   }
 
   /** A soft rounded HUD panel (legacy style). */
@@ -1012,30 +1052,39 @@ export class GameView {
 
   private drawOverlay(won: boolean) {
     const k = this.k;
+    const cx = k.width() / 2;
+    const cy = k.height() / 2;
+    // Win modal pops in with a slight overshoot; lose modal just appears.
+    const pop = won ? popEase(this.overlayPop) : 1;
     k.drawRect({
       pos: k.vec2(0, 0),
       width: k.width(),
       height: k.height(),
       color: k.rgb(20, 50, 75),
-      opacity: 0.5,
+      opacity: 0.5 * (won ? this.overlayPop : 1),
     });
-    const w = Math.min(k.width() * 0.78, 360);
-    const ph = 200;
-    const px = (k.width() - w) / 2;
-    const py = (k.height() - ph) / 2;
+
+    const w = Math.min(k.width() * 0.78, 360) * pop;
+    const ph = 200 * pop;
+    const px = cx - w / 2;
+    const py = cy - ph / 2;
     this.panel(px, py, w, ph);
+
+    // a celebratory pulse on the title (gentle breathing once popped in)
+    const pulse = won ? 1 + Math.sin(this.overlayPop * Math.PI) * 0.08 : 1;
     this.fitText(
-      won ? "🎉 You Win!" : "Out of Moves",
-      k.width() / 2,
+      won ? "🎉 You Win! 🎉" : "Out of Moves",
+      cx,
       py + ph * 0.32,
       w * 0.84,
-      34,
+      34 * pop * pulse,
       k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]),
     );
+
     // play-again pill
     const bw = w * 0.6;
-    const bh = 52;
-    const bx = (k.width() - bw) / 2;
+    const bh = 52 * pop;
+    const bx = cx - bw / 2;
     const by = py + ph * 0.58;
     k.drawRect({
       pos: k.vec2(bx, by),
@@ -1046,10 +1095,10 @@ export class GameView {
     });
     this.fitText(
       "Back to Challenges",
-      k.width() / 2,
+      cx,
       by + bh / 2,
       bw * 0.88,
-      20,
+      20 * pop,
       k.rgb(255, 255, 255),
     );
   }
@@ -1084,5 +1133,13 @@ export class GameView {
 }
 
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+// Back-out overshoot — overshoots past 1 then settles, for a springy pop-in.
+const popEase = (t: number) => {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+};
 const adjacent = (a: Pos, b: Pos) =>
   Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;

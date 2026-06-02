@@ -74,11 +74,23 @@ export function playSound(name: SoundName) {
     case "fall":
       note(c, 300, t, 0.12, "sine", 0.1);
       break;
-    case "win":
-      [523, 659, 784, 1047, 1319].forEach((f, i) =>
-        note(c, f, t + i * 0.1, 0.3, "triangle", 0.2),
+    case "win": {
+      // Triumphant fanfare: a rising melody, a sustained major chord underneath,
+      // and a sparkle arpeggio on top — bigger and brighter than a single run.
+      const melody = [523, 659, 784, 1047, 1319, 1568];
+      melody.forEach((f, i) =>
+        note(c, f, t + i * 0.09, 0.34, "triangle", 0.2),
+      );
+      // C-major chord swell that lands as the melody peaks
+      [523, 659, 784, 1047].forEach((f) =>
+        note(c, f, t + 0.45, 0.7, "sine", 0.12),
+      );
+      // high sparkle cascade
+      [1568, 1976, 2349, 2637].forEach((f, i) =>
+        note(c, f, t + 0.55 + i * 0.06, 0.25, "square", 0.07),
       );
       break;
+    }
     case "lose":
       [400, 320, 250, 180].forEach((f, i) =>
         note(c, f, t + i * 0.13, 0.3, "sawtooth", 0.18),

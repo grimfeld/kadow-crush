@@ -57,6 +57,11 @@ export interface ChallengeConfig {
    * the bottom row so they never trap unfillable holes above them.
    */
   blockers?: number;
+  /**
+   * Number of Frozen candies (Color Lock) scattered at start. Each is frosted
+   * over — unmatchable until an adjacent Match thaws it into a normal candy.
+   */
+  frozen?: number;
 }
 
 /** The default Challenge — the gentle introduction. */
@@ -245,6 +250,58 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Pop the candies under a part so it falls down.",
       "Each part that reaches the bottom is collected.",
       "Win: drop both parts off the bottom before moves run out.",
+    ],
+  },
+  {
+    id: "combo-chef",
+    name: "Combo Chef",
+    blurb: "Cook up special candies by matching four or more.",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 26,
+    objective: { kind: "make-specials", count: 3 },
+    tutorial: [
+      "Match 4 in a row to create a striped candy.",
+      "Match 5 to create a powerful colour bomb! 💣",
+      "Those are 'special' candies — the goal counts them.",
+      "Win: make the number of specials shown before moves run out.",
+    ],
+  },
+  {
+    id: "time-crunch",
+    name: "Time Crunch",
+    blurb: "Beat the clock — score fast, no move limit!",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 999,
+    objective: { kind: "beat-clock", target: 2500, seconds: 60 },
+    tutorial: [
+      "This one is a race against the clock! ⏱️",
+      "Swap as fast as you like — there's no move limit.",
+      "Every candy you pop adds to your score.",
+      "Win: reach the points shown before time runs out.",
+    ],
+  },
+  {
+    id: "color-lock",
+    name: "Color Lock",
+    blurb: "Some candies are frozen — melt the frost to free them.",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 28,
+    objective: { kind: "collect-colours", targetCount: 2, quota: 12 },
+    frozen: 6,
+    tutorial: [
+      "Collect the 2 fruits shown at the top, as usual.",
+      "But some candies are frozen in frost ❄️ and can't move.",
+      "Pop a match right next to a frozen one to melt it free.",
+      "Win: collect both fruits before your moves run out.",
     ],
   },
 ];

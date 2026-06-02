@@ -36,6 +36,7 @@ interface Sprite {
   ingredient: boolean;
   ingredientKind: number;
   blocker: boolean;
+  frozen: boolean;
   x: number;
   y: number;
   scale: number;
@@ -146,6 +147,7 @@ export class GameView {
           ingredient: !!candy.ingredient,
           ingredientKind: candy.ingredientKind ?? 0,
           blocker: !!candy.blocker,
+          frozen: !!candy.frozen,
           x,
           y,
           scale: 1,
@@ -296,6 +298,7 @@ export class GameView {
             ingredient: false,
             ingredientKind: 0,
             blocker: false,
+            frozen: false,
             x,
             y: startY,
             scale: 1,
@@ -325,6 +328,16 @@ export class GameView {
         // an adjacent match broke these blockers — pop them out
         playSound("clear");
         await this.popIds(step.cells, step.ids);
+        break;
+      }
+      case "thaw": {
+        // an adjacent match melted the frost — drop the overlay and pulse
+        playSound("special");
+        for (const id of step.ids) {
+          const s = this.sprites.get(id);
+          if (s) s.frozen = false;
+        }
+        await Promise.all(step.ids.map((id) => this.pulse(id)));
         break;
       }
       case "reshuffle": {
@@ -523,6 +536,12 @@ export class GameView {
 
   // ---- frame --------------------------------------------------------------
 
+  /** Per-frame update: advance the level clock for timed challenges. */
+  tick(dtSeconds: number) {
+    if (this.mode !== "play") return;
+    this.game.tick(dtSeconds);
+  }
+
   onResize() {
     if (this.mode !== "play") return; // menu/tutorial recompute geometry each draw
     this.layout = computeLayout(
@@ -629,6 +648,7 @@ export class GameView {
         s.ingredient,
         s.blocker,
         s.ingredientKind,
+        s.frozen,
       );
 
     // particle bursts on top of candies
@@ -676,17 +696,26 @@ export class GameView {
     const panelY = h * 0.14;
     const movesW = Math.max(86, this.layout.boardW * 0.32);
 
-    // --- Moves panel (left) ---
+    // --- Moves panel (left) — shows the clock instead for timed challenges. ---
     this.panel(left, panelY, movesW, panelH);
+    const timed = this.game.cfg.objective.kind === "beat-clock";
+    let counterLabel = "Moves";
+    let counterValue = `${this.game.movesLeft}`;
+    if (timed) {
+      const total = (this.game.cfg.objective as { seconds: number }).seconds;
+      const remaining = Math.max(0, Math.ceil(total - this.game.elapsed));
+      counterLabel = "Time";
+      counterValue = `${remaining}s`;
+    }
     k.drawText({
-      text: "Moves",
+      text: counterLabel,
       pos: k.vec2(left + movesW / 2, panelY + panelH * 0.3),
       size: panelH * 0.24,
       color: dark,
       anchor: "center",
     });
     k.drawText({
-      text: `${this.game.movesLeft}`,
+      text: counterValue,
       pos: k.vec2(left + movesW / 2, panelY + panelH * 0.68),
       size: panelH * 0.38,
       color: accent,
@@ -751,7 +780,7 @@ export class GameView {
       });
       return;
     }
-    if (spec.kind === "score") {
+    if (spec.kind === "score" || spec.kind === "beat-clock") {
       k.drawText({
         text: "Score",
         pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
@@ -765,6 +794,24 @@ export class GameView {
         panelY + panelH * 0.68,
         goalW * 0.9,
         panelH * 0.3,
+        accent,
+      );
+      return;
+    }
+    if (spec.kind === "make-specials") {
+      k.drawText({
+        text: "Specials made",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.22,
+        color: dark,
+        anchor: "center",
+      });
+      this.fitText(
+        `${Math.min(this.game.specialsMade, spec.count)} / ${spec.count}`,
+        goalX + goalW / 2,
+        panelY + panelH * 0.68,
+        goalW * 0.9,
+        panelH * 0.38,
         accent,
       );
       return;

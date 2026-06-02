@@ -11,6 +11,8 @@ import {
   BURGER_PARTS,
   CELL_BG,
   COLOUR_THEMES,
+  FROST_FILL,
+  FROST_OUTLINE,
   INGREDIENT_FILL,
 } from "./theme.ts";
 
@@ -36,6 +38,7 @@ export function drawCandy(
   ingredient = false,
   blocker = false,
   ingredientKind = 0,
+  frozen = false,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
@@ -108,6 +111,21 @@ export function drawCandy(
     if (special === "striped-row" || special === "striped-col") {
       drawStripes(k, x, y, half, special === "striped-row");
     }
+  }
+
+  // Frost coating (Color Lock): a translucent icy overlay + snowflake, so the
+  // candy's colour still shows through but it clearly reads as locked.
+  if (frozen) {
+    k.drawRect({
+      pos: k.vec2(x - half, y - half),
+      width: tile,
+      height: tile,
+      radius: tile * 0.24,
+      color: k.rgb(FROST_FILL[0], FROST_FILL[1], FROST_FILL[2]),
+      opacity: 0.6,
+      outline: { width: Math.max(2, tile * 0.07), color: k.rgb(FROST_OUTLINE[0], FROST_OUTLINE[1], FROST_OUTLINE[2]) },
+    });
+    k.drawText({ text: "❄️", pos: k.vec2(x, y), size: tile * 0.5, anchor: "center" });
   }
 }
 

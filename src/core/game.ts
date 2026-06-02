@@ -21,8 +21,12 @@ export class Game {
    * unconditionally.
    */
   objective: Objective;
-  /** Running score (Score objective). */
+  /** Running score (Score / Beat-Clock objectives). */
   score = 0;
+  /** Special candies created so far (Make-Specials objective). */
+  specialsMade = 0;
+  /** Seconds elapsed since the level started (Beat-Clock objective). */
+  elapsed = 0;
   private rng: Rng;
 
   constructor(seed: number, cfg: ChallengeConfig = DEFAULT_CHALLENGE) {
@@ -70,13 +74,33 @@ export class Game {
         return this.board.jellyRemaining() === 0;
       case "collect-ingredients":
         return this.board.ingredientsCollected >= spec.count;
+      case "make-specials":
+        return this.specialsMade >= spec.count;
+      case "beat-clock":
+        return this.score >= spec.target;
     }
+  }
+
+  /** Whether this Challenge is lost by the clock rather than the move budget. */
+  private isTimed(): boolean {
+    return this.cfg.objective.kind === "beat-clock";
   }
 
   outcome(): Outcome {
     if (this.objectiveMet()) return "won";
+    if (this.isTimed()) {
+      const spec = this.cfg.objective as { kind: "beat-clock"; seconds: number };
+      return this.elapsed >= spec.seconds ? "lost" : "playing";
+    }
     if (this.movesLeft <= 0) return "lost";
     return "playing";
+  }
+
+  /** Advance the level clock (Beat-Clock). No-op once the level is decided. */
+  tick(dtSeconds: number) {
+    if (!this.isTimed()) return;
+    if (this.outcome() !== "playing") return;
+    this.elapsed += dtSeconds;
   }
 
   /** Play a Move. Returns the Steps to animate (empty if the swap was illegal). */
@@ -87,6 +111,8 @@ export class Game {
     if (consumedMove) {
       this.movesLeft--;
       this.score += cleared.length * POINTS_PER_CLEAR;
+      for (const s of steps)
+        if (s.kind === "special-create") this.specialsMade++;
       for (const colour of cleared) {
         if (this.objective.collected.has(colour)) {
           this.objective.collected.set(

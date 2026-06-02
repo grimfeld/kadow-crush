@@ -65,6 +65,11 @@ export const BURGER_DONE = "🍔";
 export const BLOCKER_FILL: [number, number, number] = [150, 150, 160];
 export const BLOCKER_EMOJI = "🧱";
 
+// Frost coating over a Frozen candy (Color Lock) — pale icy blue with a crisp
+// rim, drawn translucent so the candy's colour still shows through.
+export const FROST_FILL: [number, number, number] = [200, 232, 255];
+export const FROST_OUTLINE: [number, number, number] = [120, 190, 240];
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

@@ -36,4 +36,6 @@ k.onUpdate(() => {
     lastH = k.height();
     view.onResize();
   }
+  // Advance the level clock (timed challenges); no-op otherwise.
+  view.tick(k.dt());
 });

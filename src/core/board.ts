@@ -42,6 +42,7 @@ export class Board {
   readonly colourCount: number;
   private readonly ingredientCount: number;
   private readonly blockerCount: number;
+  private readonly frozenCount: number;
   private nextId = 1;
 
   constructor(
@@ -53,6 +54,7 @@ export class Board {
     this.colourCount = cfg.colourCount;
     this.ingredientCount = cfg.ingredients ?? 0;
     this.blockerCount = cfg.blockers ?? 0;
+    this.frozenCount = cfg.frozen ?? 0;
     this.grid = this.generateSolvableGrid();
     this.jelly = this.buildJelly(cfg.jelly);
   }
@@ -96,6 +98,11 @@ export class Board {
     return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
   }
 
+  /** A candy that cannot be swapped by the player (Blocker or Frozen). */
+  private immovable(cell: Candy | null): boolean {
+    return !!cell && (!!cell.blocker || !!cell.frozen);
+  }
+
   // ---- generation ---------------------------------------------------------
 
   private newCandy(colour: Colour): Candy {
@@ -116,15 +123,47 @@ export class Board {
     return { id: this.nextId++, colour: null, special: null, blocker: true };
   }
 
+  private newFrozen(colour: Colour): Candy {
+    return { id: this.nextId++, colour, special: null, frozen: true };
+  }
+
   /** Fill with random colours, no pre-existing match, at least one legal move. */
   private generateSolvableGrid(): Grid {
     for (;;) {
       const grid = this.fillNoMatches();
       this.placeBlockers(grid);
       this.placeIngredients(grid);
+      this.placeFrozen(grid);
       // Ingredients/Blockers are null-colour, so they can only break runs, never
-      // make one — the no-match guarantee still holds. Re-check the legal move.
+      // make one — the no-match guarantee still holds. Frozen candies keep a
+      // colour but never match while frozen (colourAt returns null), so they
+      // only break runs too. Re-check that a legal move still exists.
       if (this.hasLegalMoveOn(grid)) return grid;
+    }
+  }
+
+  /**
+   * Freeze N existing candies at random cells (never an Ingredient/Blocker).
+   * They keep their colour but read as null in match detection until thawed.
+   */
+  private placeFrozen(grid: Grid) {
+    if (this.frozenCount <= 0) return;
+    const cells: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = grid[r][c];
+        if (cell && !cell.blocker && !cell.ingredient)
+          cells.push({ row: r, col: c });
+      }
+    // Fisher–Yates with the seeded rng, take the first N cells.
+    for (let i = cells.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [cells[i], cells[j]] = [cells[j], cells[i]];
+    }
+    const n = Math.min(this.frozenCount, cells.length);
+    for (let i = 0; i < n; i++) {
+      const p = cells[i];
+      grid[p.row][p.col] = this.newFrozen(grid[p.row][p.col]!.colour!);
     }
   }
 
@@ -183,8 +222,10 @@ export class Board {
 
   private colourAt(grid: Grid, r: number, c: number): Colour | null {
     const cell = grid[r][c];
-    // A Color Bomb never participates in a colour Match.
-    return cell && cell.special !== "color-bomb" ? cell.colour : null;
+    // A Color Bomb never participates in a colour Match; a Frozen candy is inert
+    // until thawed.
+    if (!cell || cell.special === "color-bomb" || cell.frozen) return null;
+    return cell.colour;
   }
 
   /** All maximal runs (>=3) of equal colour, horizontal and vertical. */
@@ -256,8 +297,8 @@ export class Board {
           const nr = r + dr;
           const nc = c + dc;
           if (!this.inBounds(nr, nc)) continue;
-          // Blockers can't be swapped — skip pairs that touch one.
-          if (grid[r][c]?.blocker || grid[nr][nc]?.blocker) continue;
+          // Blockers and Frozen candies can't be swapped — skip those pairs.
+          if (this.immovable(grid[r][c]) || this.immovable(grid[nr][nc])) continue;
           this.swapCells(grid, r, c, nr, nc);
           const legal =
             this.isSpecialSwap(grid, { row: r, col: c }, { row: nr, col: nc }) ||
@@ -294,8 +335,8 @@ export class Board {
     if (!adjacent(a, b) || samePos(a, b)) {
       return { steps: [], consumedMove: false, cleared };
     }
-    // Blockers are immovable — a swap touching one is a no-op.
-    if (this.grid[a.row][a.col]?.blocker || this.grid[b.row][b.col]?.blocker) {
+    // Blockers and Frozen candies are immovable — a swap touching one is a no-op.
+    if (this.immovable(this.grid[a.row][a.col]) || this.immovable(this.grid[b.row][b.col])) {
       return { steps: [], consumedMove: false, cleared };
     }
 
@@ -342,6 +383,7 @@ export class Board {
       steps.push({ kind: "special-activate", origin, cleared: cells, ids });
       this.pushJelly(steps, jelly);
       this.clearAdjacentBlockers(cells, steps);
+      this.thawAdjacentFrozen(cells, steps);
     };
     // Snapshot which positions hold specials before clearing.
     const aSpecial = ca?.special != null;
@@ -444,6 +486,35 @@ export class Board {
     if (cells.length) steps.push({ kind: "blocker-clear", cells, ids });
   }
 
+  /** Thaw Frozen candies orthogonally adjacent to the just-cleared cells. */
+  private thawAdjacentFrozen(clearedCells: Pos[], steps: Step[]) {
+    if (this.frozenCount <= 0) return;
+    const seen = new Set<string>();
+    const cells: Pos[] = [];
+    const ids: number[] = [];
+    for (const p of clearedCells) {
+      for (const [dr, dc] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nr = p.row + dr;
+        const nc = p.col + dc;
+        if (!this.inBounds(nr, nc)) continue;
+        const cell = this.grid[nr][nc];
+        const k = `${nr},${nc}`;
+        if (cell?.frozen && !seen.has(k)) {
+          seen.add(k);
+          cell.frozen = false; // frost off — now an ordinary candy
+          cells.push({ row: nr, col: nc });
+          ids.push(cell.id);
+        }
+      }
+    }
+    if (cells.length) steps.push({ kind: "thaw", cells, ids });
+  }
+
   /** Resolve cascades until the board is stable. Appends Steps. */
   private resolve(steps: Step[], swap: { swapA: Pos; swapB: Pos }, cleared: Colour[]) {
     let firstPass = true;
@@ -470,6 +541,7 @@ export class Board {
         });
         this.pushJelly(steps, cleared2.jelly);
         this.clearAdjacentBlockers(cleared2.cells, steps);
+        this.thawAdjacentFrozen(cleared2.cells, steps);
 
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {
@@ -630,7 +702,7 @@ export class Board {
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
-        if (!cell || cell.blocker || cell.ingredient) continue;
+        if (!cell || cell.blocker || cell.ingredient || cell.frozen) continue;
         movable.push(cell);
         slots.push({ row: r, col: c });
       }
@@ -644,7 +716,7 @@ export class Board {
       // Start from the fixed occupants, then drop the shuffled candies in.
       const grid: Grid = this.grid.map((row) =>
         row.map((cell) =>
-          cell && (cell.blocker || cell.ingredient) ? cell : null,
+          cell && (cell.blocker || cell.ingredient || cell.frozen) ? cell : null,
         ),
       );
       slots.forEach((p, k) => (grid[p.row][p.col] = movable[k]));

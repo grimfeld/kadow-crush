@@ -25,6 +25,13 @@ export interface Candy {
    * and is removed when a Match clears in an orthogonally-adjacent cell.
    */
   blocker?: boolean;
+  /**
+   * Frozen (Color Lock): has a real Colour but is encased in frost — it cannot
+   * be swapped and never forms a Match while frozen. A Match clearing in an
+   * orthogonally-adjacent cell thaws it (frost off), turning it into an ordinary
+   * candy. Unlike a Blocker it still falls with gravity.
+   */
+  frozen?: boolean;
 }
 
 export interface Pos {
@@ -55,6 +62,8 @@ export type Step =
   | { kind: "ingredient-collect"; cells: Pos[]; ids: number[]; kinds: number[] }
   // Blockers removed by an adjacent Match.
   | { kind: "blocker-clear"; cells: Pos[]; ids: number[] }
+  // Frozen candies thawed by an adjacent Match (frost off; candy stays).
+  | { kind: "thaw"; cells: Pos[]; ids: number[] }
   | { kind: "reshuffle"; layout: (Candy | null)[][] };
 
 export interface Objective {
@@ -73,7 +82,13 @@ export type ObjectiveSpec =
   | { kind: "collect-colours"; targetCount: number; quota: number }
   | { kind: "score"; target: number }
   | { kind: "clear-jelly" }
-  | { kind: "collect-ingredients"; count: number };
+  | { kind: "collect-ingredients"; count: number }
+  // Make-Specials (Combo Chef): create `count` Special candies (striped/bomb)
+  // before the move budget runs out.
+  | { kind: "make-specials"; count: number }
+  // Beat-the-Clock (Time Crunch): reach `target` score within `seconds`. The
+  // move budget is irrelevant; the view feeds elapsed time to the Game.
+  | { kind: "beat-clock"; target: number; seconds: number };
 
 export type ObjectiveKind = ObjectiveSpec["kind"];
 

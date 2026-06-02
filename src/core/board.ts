@@ -54,6 +54,12 @@ export class Board {
   private readonly boxHits: number;
   private readonly gumCount: number;
   private readonly gumLayers: number;
+  /** Generators by column, with their emitted special, period, and a running
+   *  refill counter (how many candies that generator has emitted). */
+  private readonly generators: Map<
+    number,
+    { special: SpecialType; every: number; count: number }
+  >;
   private readonly avalancheRate: number;
   /** Rotating burger-part kind for Avalanche-spawned ingredients. */
   private avalancheKind = 0;
@@ -76,6 +82,12 @@ export class Board {
     this.boxHits = cfg.boxHits ?? 2;
     this.gumCount = cfg.gum ?? 0;
     this.gumLayers = Math.max(1, cfg.gumLayers ?? 2);
+    this.generators = new Map(
+      (cfg.generators ?? []).map((g) => [
+        g.col,
+        { special: g.special, every: Math.max(1, g.every), count: 0 },
+      ]),
+    );
     this.avalancheRate = cfg.avalanche ?? 0;
     this.grid = this.generateSolvableGrid();
     this.jelly = this.buildJelly(cfg.jelly);
@@ -1509,6 +1521,7 @@ export class Board {
   private spawnNew(steps: Step[]) {
     const spawns: { id: number; colour: Colour; at: Pos }[] = [];
     const ingSpawns: { id: number; kind: number; at: Pos }[] = [];
+    const genSpecials: { at: Pos; id: number; colour: Colour; special: SpecialType }[] = [];
     // Avalanche cap: never let more than a few ingredients ride the board at
     // once, so the player can always keep up and the board never floods.
     let ingredientBudget =
@@ -1535,11 +1548,29 @@ export class Board {
         const candy = this.newCandy(colour);
         this.grid[r][c] = candy;
         spawns.push({ id: candy.id, colour, at: { row: r, col: c } });
+        // Generator: every Nth candy this column emits becomes its Special. The
+        // candy still drops in as a normal spawn (for the fall animation), then a
+        // special-create marks it special in place.
+        const gen = this.generators.get(c);
+        if (gen) {
+          gen.count++;
+          if (gen.count % gen.every === 0) {
+            candy.special = gen.special;
+            genSpecials.push({ at: { row: r, col: c }, id: candy.id, colour, special: gen.special });
+          }
+        }
         topMost = false;
       }
     }
     if (spawns.length) steps.push({ kind: "spawn", spawns });
     if (ingSpawns.length) steps.push({ kind: "ingredient-spawn", spawns: ingSpawns });
+    for (const g of genSpecials)
+      steps.push({ kind: "special-create", at: g.at, id: g.id, colour: g.colour, special: g.special });
+  }
+
+  /** Columns that have a Generator (for the view to draw a machine above them). */
+  generatorColumns(): number[] {
+    return [...this.generators.keys()];
   }
 
   /** How many Ingredients are currently somewhere on the board. */

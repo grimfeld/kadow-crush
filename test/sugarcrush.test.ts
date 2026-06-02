@@ -3,7 +3,6 @@ import { Board } from "../src/core/board.ts";
 import { type ChallengeConfig } from "../src/core/config.ts";
 import { Game } from "../src/core/game.ts";
 import { makeRng } from "../src/core/rng.ts";
-import type { Step } from "../src/core/types.ts";
 
 const scoreCfg: ChallengeConfig = {
   id: "test-sc",

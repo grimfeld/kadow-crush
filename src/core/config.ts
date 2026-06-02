@@ -4,7 +4,7 @@
 // only these definitions are fixed.
 // See docs/adr/0002-challenge-grids.md and CONTEXT.md.
 
-import type { ObjectiveSpec } from "./types.ts";
+import type { ObjectiveSpec, SpecialType } from "./types.ts";
 
 export type Difficulty = "Easy" | "Medium" | "Hard";
 
@@ -72,6 +72,13 @@ export interface ChallengeConfig {
   gum?: number;
   /** Adjacent-Match hits before each Gum pops (default 2). */
   gumLayers?: number;
+  /**
+   * Generators: machines above certain columns. Each refills its column with
+   * normal candies, but every `every`-th candy it emits is the given Special
+   * (steady special pressure for harder levels). A visual machine is drawn above
+   * each listed column.
+   */
+  generators?: { col: number; special: SpecialType; every: number }[];
   /**
    * Number of Frozen candies (Color Lock) scattered at start. Each is frosted
    * over — unmatchable until an adjacent Match thaws it into a normal candy.
@@ -430,6 +437,26 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Each brick takes 3 hits; the dots show how many are left.",
       "Pop matches next to a brick to chip it away.",
       "Win: collect both fruits before your moves run out.",
+    ],
+  },
+  {
+    id: "candy-factory",
+    name: "Candy Factory",
+    blurb: "A machine feeds striped candies into the line — use them!",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 26,
+    objective: { kind: "score", target: 4000 },
+    generators: [
+      { col: 3, special: "striped-row", every: 4 },
+    ],
+    tutorial: [
+      "A machine ⚙️ sits above the middle column.",
+      "Every few candies it drops are striped specials!",
+      "Line them up or swap them to clear whole rows.",
+      "Win: reach the points shown before your moves run out.",
     ],
   },
 ];

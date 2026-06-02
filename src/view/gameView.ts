@@ -1071,8 +1071,25 @@ export class GameView {
       },
     });
 
-    // cell backgrounds + jelly coating
+    // generator machines above their columns
     const cell = this.layout.cell;
+    for (const c of this.game.board.generatorColumns()) {
+      const cx = this.layout.originX + c * cell + cell / 2;
+      const my = this.layout.originY - cell * 0.42;
+      const mw = cell * 0.78;
+      const mh = cell * 0.5;
+      k.drawRect({
+        pos: k.vec2(cx - mw / 2, my - mh / 2),
+        width: mw,
+        height: mh,
+        radius: cell * 0.1,
+        color: k.rgb(120, 130, 150),
+        outline: { width: 2, color: k.rgb(80, 90, 110) },
+      });
+      k.drawText({ text: "⚙️", pos: k.vec2(cx, my), size: cell * 0.34, anchor: "center", color: this.white });
+    }
+
+    // cell backgrounds + jelly coating
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         const { x, y } = cellCenter(this.layout, r, c);

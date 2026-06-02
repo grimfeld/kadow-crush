@@ -3,10 +3,11 @@
 // requests. Input is locked while a Resolution animates.
 
 import type { KAPLAYCtx } from "kaplay";
-import { COLS, ROWS } from "../core/config.ts";
+import type { ChallengeConfig } from "../core/config.ts";
 import { Game } from "../core/game.ts";
 import type { Candy, Colour, Pos, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
+import { MenuScreen } from "./menu.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import {
   BG_BOTTOM,
@@ -40,8 +41,10 @@ const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
 
 export class GameView {
-  private game: Game;
-  private layout: Layout;
+  private mode: "menu" | "play" = "menu";
+  private menu: MenuScreen;
+  private game!: Game; // defined once a Challenge is picked
+  private layout!: Layout; // defined once a Challenge is picked
   private sprites = new Map<number, Sprite>(); // candy id → sprite
   // The view's own mirror of which candy id occupies each cell. Driven purely
   // by step payloads during a Resolution, never by reading board.grid (which is
@@ -54,14 +57,9 @@ export class GameView {
   private particles: Particles;
   private prevOutcome: "playing" | "won" | "lost" = "playing";
 
-  constructor(
-    private k: KAPLAYCtx,
-    seed: number,
-  ) {
-    this.game = new Game(seed);
-    this.layout = computeLayout(k.width(), k.height());
+  constructor(private k: KAPLAYCtx) {
+    this.menu = new MenuScreen(k);
     this.particles = new Particles(k);
-    this.rebuildFromBoard();
     this.bind();
     // advance particles every frame
     k.onUpdate(() => this.particles.update(k.dt()));
@@ -69,6 +67,37 @@ export class GameView {
 
   private newSeed() {
     return (Math.random() * 0xffffffff) >>> 0;
+  }
+
+  // Board dims of the active Challenge (ADR-0002 — no global constants).
+  private get rows() {
+    return this.game.board.rows;
+  }
+  private get cols() {
+    return this.game.board.cols;
+  }
+
+  /** Begin a Challenge from the menu: fresh seeded board, switch to play mode. */
+  startChallenge(cfg: ChallengeConfig) {
+    this.game = new Game(this.newSeed(), cfg);
+    this.layout = computeLayout(this.k.width(), this.k.height(), cfg.rows, cfg.cols);
+    this.selected = null;
+    this.dragStart = null;
+    this.prevOutcome = "playing";
+    this.sprites.clear();
+    this.rebuildFromBoard();
+    this.mode = "play";
+  }
+
+  private returnToMenu() {
+    this.mode = "menu";
+    this.selected = null;
+    this.dragStart = null;
+    this.sprites.clear();
+  }
+
+  private inBounds(p: Pos): boolean {
+    return p.row >= 0 && p.row < this.rows && p.col >= 0 && p.col < this.cols;
   }
 
   // ---- sprite model -------------------------------------------------------
@@ -80,11 +109,11 @@ export class GameView {
    */
   private rebuildFromBoard() {
     this.sprites.clear();
-    this.viewGrid = Array.from({ length: ROWS }, () =>
-      Array<number | null>(COLS).fill(null),
+    this.viewGrid = Array.from({ length: this.rows }, () =>
+      Array<number | null>(this.cols).fill(null),
     );
-    for (let r = 0; r < ROWS; r++) {
-      for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
         if (!candy) continue;
         const { x, y } = cellCenter(this.layout, r, c);
@@ -103,8 +132,8 @@ export class GameView {
 
   /** Re-snap every live sprite to its viewGrid cell (used after a Resolution). */
   private snapToViewGrid() {
-    for (let r = 0; r < ROWS; r++)
-      for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
         const id = this.viewGrid[r][c];
         if (id == null) continue;
         const s = this.sprites.get(id);
@@ -234,7 +263,7 @@ export class GameView {
         for (const sp of step.spawns) {
           const { x } = cellCenter(this.layout, sp.at.row, sp.at.col);
           const startY =
-            this.layout.originY - this.layout.cell * (ROWS - sp.at.row);
+            this.layout.originY - this.layout.cell * (this.rows - sp.at.row);
           this.sprites.set(sp.id, {
             id: sp.id,
             colour: sp.colour,
@@ -319,7 +348,7 @@ export class GameView {
   private cellAt(px: number, py: number): Pos | null {
     const col = Math.floor((px - this.layout.originX) / this.layout.cell);
     const row = Math.floor((py - this.layout.originY) / this.layout.cell);
-    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) return null;
+    if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return null;
     return { row, col };
   }
 
@@ -327,6 +356,15 @@ export class GameView {
     const k = this.k;
 
     k.onMousePress(() => {
+      if (this.mode === "menu") {
+        const p = k.mousePos();
+        const cfg = this.menu.hitTest(p.x, p.y);
+        if (cfg) {
+          playSound("swap");
+          this.startChallenge(cfg);
+        }
+        return;
+      }
       if (this.busy || this.game.outcome() !== "playing") {
         this.handleOverlayClick();
         return;
@@ -367,7 +405,7 @@ export class GameView {
             ? { row: from.row, col: from.col + (dx > 0 ? 1 : -1) }
             : { row: from.row + (dy > 0 ? 1 : -1), col: from.col };
         this.selected = null;
-        if (inBounds(to)) void this.requestSwap(from, to);
+        if (this.inBounds(to)) void this.requestSwap(from, to);
       }
       this.dragStart = null;
     });
@@ -375,11 +413,8 @@ export class GameView {
 
   private handleOverlayClick() {
     if (this.game.outcome() === "playing") return;
-    // any click on the end overlay restarts with a fresh random level
-    this.game = new Game(this.newSeed());
-    this.layout = computeLayout(this.k.width(), this.k.height());
-    this.prevOutcome = "playing";
-    this.rebuildFromBoard();
+    // any click on the end overlay returns to the level-select menu
+    this.returnToMenu();
   }
 
   private async requestSwap(a: Pos, b: Pos) {
@@ -397,13 +432,24 @@ export class GameView {
   // ---- frame --------------------------------------------------------------
 
   onResize() {
-    this.layout = computeLayout(this.k.width(), this.k.height());
+    if (this.mode === "menu") return; // menu recomputes geometry each draw
+    this.layout = computeLayout(
+      this.k.width(),
+      this.k.height(),
+      this.rows,
+      this.cols,
+    );
     // recompute rest positions for the new layout from the current view grid
     if (this.busy) this.snapToViewGrid();
     else this.rebuildFromBoard();
   }
 
   draw() {
+    if (this.mode === "menu") {
+      this.menu.draw();
+      this.particles.draw();
+      return;
+    }
     const k = this.k;
     // light sky gradient background
     k.drawRect({
@@ -436,8 +482,8 @@ export class GameView {
     });
 
     // cell backgrounds
-    for (let r = 0; r < ROWS; r++)
-      for (let c = 0; c < COLS; c++) {
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
         const { x, y } = cellCenter(this.layout, r, c);
         drawCellBg(k, x, y, this.layout.cell);
       }
@@ -526,6 +572,27 @@ export class GameView {
     const goalX = left + movesW + this.layout.cell * 0.3;
     const goalW = right - goalX;
     this.panel(goalX, panelY, goalW, panelH);
+
+    const spec = this.game.cfg.objective;
+    if (spec.kind === "score") {
+      k.drawText({
+        text: "Score",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.24,
+        color: dark,
+        anchor: "center",
+      });
+      k.drawText({
+        text: `${this.game.score.toLocaleString()} / ${spec.target.toLocaleString()}`,
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.68),
+        size: panelH * 0.3,
+        color: accent,
+        anchor: "center",
+      });
+      return;
+    }
+
+    // collect-colours (default)
     k.drawText({
       text: "Goal",
       pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.24),
@@ -534,7 +601,7 @@ export class GameView {
       anchor: "center",
     });
     // goal chips: emoji + count, evenly spread
-    const chips = obj.targets.length;
+    const chips = Math.max(1, obj.targets.length);
     const slot = goalW / chips;
     obj.targets.forEach((colour, i) => {
       const cx = goalX + slot * (i + 0.5);
@@ -591,9 +658,9 @@ export class GameView {
       color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]),
     });
     k.drawText({
-      text: "Play Again",
+      text: "Back to Challenges",
       pos: k.vec2(k.width() / 2, by + bh / 2),
-      size: 22,
+      size: 20,
       color: k.rgb(255, 255, 255),
       anchor: "center",
     });
@@ -603,5 +670,3 @@ export class GameView {
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);
 const adjacent = (a: Pos, b: Pos) =>
   Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
-const inBounds = (p: Pos) =>
-  p.row >= 0 && p.row < ROWS && p.col >= 0 && p.col < COLS;

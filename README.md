@@ -1,6 +1,6 @@
 # Kadow Crush
 
-A mobile-first match-3 puzzle (Candy Crush clone) built with [Kaplay](https://kaplayjs.com/) and TypeScript. One randomly-generated level.
+A mobile-first match-3 puzzle (Candy Crush clone) built with [Kaplay](https://kaplayjs.com/) and TypeScript. A level-select menu of **challenge grids**, each a different Candy-Crush-style goal on a fresh seeded board.
 
 ## Run
 
@@ -13,8 +13,9 @@ npm test         # logic-core unit tests (Vitest)
 
 ## How it plays
 
-- 8×7 board, 5 colours (each a distinct shape: circle, square, triangle, diamond, star).
-- **Objective**: clear 25 of each of two random Target Colours within **20 moves**.
+- The game opens on a **level-select menu**. Pick a challenge to play; win or lose returns you to the menu.
+- **Challenge grids** vary the board size, colour count, move budget, and goal. Each challenge is a fixed definition; its board is generated from a fresh random seed every time you play it (see [`docs/adr/0002`](docs/adr/0002-challenge-grids.md)).
+- **Objective types** (Candy-Crush archetypes): *Collect Colours* (clear a quota of target colours), *Score* (reach a points target), plus *Clear Jelly* and *Collect Ingredients* (in progress). Challenges may also place immovable **blockers**.
 - Swap two adjacent candies (**swipe** or **tap-tap**). A swap is only legal if it makes a line of 3+.
 - **Specials**: a line of 4 makes a Striped (clears its row/column); a line of 5+ makes a Color Bomb (clears all of the colour it's swapped with). Specials fire only when swapped.
 - The board reshuffles automatically if it ever deadlocks.

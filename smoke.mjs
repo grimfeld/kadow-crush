@@ -24,6 +24,9 @@ await page.waitForTimeout(1500);
 // large cascade, the worst case for the vanish/reappear glitch.
 const plan = await page.evaluate(() => {
   const v = window.__view;
+  // The app opens on the level-select menu — start the first challenge (the
+  // menu populates its card rects on the first draw, which has happened by now).
+  if (v.mode === "menu") v.startChallenge(v["menu"]["cards"][0].cfg);
   const g = v.game.board.grid;
   // pick the colour that appears most as the bomb target neighbour
   const counts = {};

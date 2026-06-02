@@ -86,6 +86,8 @@ export class Game {
         return this.score >= spec.target;
       case "free-items":
         return this.board.itemsFreed >= spec.count;
+      case "clear-chocolate":
+        return this.board.chocolateRemaining() === 0;
     }
   }
 
@@ -140,6 +142,12 @@ export class Game {
       const clearedJelly = steps.some((s) => s.kind === "jelly-clear");
       if (!clearedJelly && this.outcome() === "playing") {
         const spread = this.board.spreadJelly();
+        if (spread) steps.push(spread);
+      }
+      // Chocolate spreads on a Move that cleared none of it.
+      const clearedChoco = steps.some((s) => s.kind === "choco-clear");
+      if (!clearedChoco && this.outcome() === "playing") {
+        const spread = this.board.spreadChocolate();
         if (spread) steps.push(spread);
       }
 

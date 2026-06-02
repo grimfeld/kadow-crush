@@ -72,6 +72,12 @@ export interface Candy {
   cased?: boolean;
   /** Remaining adjacent-Match hits to break a Cased item free (default 2). */
   caseHits?: number;
+  /**
+   * Chocolate (Clear-the-Chocolate challenge): an immovable, gravity-blocking
+   * tile (no candy). An adjacent Match clears one; on any Move that clears no
+   * chocolate it spreads, turning a neighbouring candy cell into chocolate.
+   */
+  chocolate?: boolean;
 }
 
 export interface Pos {
@@ -129,6 +135,11 @@ export type Step =
   | { kind: "case-hit"; cells: Pos[]; ids: number[]; hits: number[] }
   // Cased items freed (casing broken): they pop free and count toward the goal.
   | { kind: "item-free"; cells: Pos[]; ids: number[] }
+  // Chocolate tiles cleared by an adjacent Match.
+  | { kind: "choco-clear"; cells: Pos[]; ids: number[] }
+  // Chocolate crept onto these cells (turned a candy into chocolate). `ids` are
+  // the NEW chocolate tile ids; the candy that was there is gone.
+  | { kind: "choco-spread"; cells: Pos[]; ids: number[] }
   // Sugar Crush: one leftover Move spent turning a Candy into a Striped Special.
   // `movesLeft` is the count remaining AFTER this conversion (for the HUD tick).
   | {
@@ -171,7 +182,9 @@ export type ObjectiveSpec =
   // move budget is irrelevant; the view feeds elapsed time to the Game.
   | { kind: "beat-clock"; target: number; seconds: number }
   // Free-It: break the casing off all `count` trapped items before moves run out.
-  | { kind: "free-items"; count: number };
+  | { kind: "free-items"; count: number }
+  // Clear-the-Chocolate: remove every chocolate tile before moves run out.
+  | { kind: "clear-chocolate" };
 
 export type ObjectiveKind = ObjectiveSpec["kind"];
 

@@ -47,6 +47,7 @@ interface Sprite {
   gumHits: number;
   cased: boolean;
   caseHits: number;
+  chocolate: boolean;
   x: number;
   y: number;
   scale: number;
@@ -92,6 +93,8 @@ export class GameView {
   private viewCollected = 0;
   // Cased items freed so far, mirrored for the HUD (Free-It).
   private viewFreed = 0;
+  // Chocolate tiles on the board, mirrored for the HUD (Clear-the-Chocolate).
+  private viewChoco = 0;
   // During a Sugar Crush, the leftover-move count shown ticking down in the HUD
   // (-1 = not in a finale; the real game.movesLeft is already 0).
   private finaleMoves = -1;
@@ -355,6 +358,7 @@ export class GameView {
     this.viewBurger = new Set(this.game.board.collectedIngredientKinds);
     this.viewCollected = this.game.board.ingredientsCollected;
     this.viewFreed = this.game.board.itemsFreed;
+    this.viewChoco = this.game.board.chocolateRemaining();
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -375,6 +379,7 @@ export class GameView {
           gumHits: candy.gumHits ?? 0,
           cased: !!candy.cased,
           caseHits: candy.caseHits ?? 0,
+          chocolate: !!candy.chocolate,
           x,
           y,
           scale: 1,
@@ -565,6 +570,7 @@ export class GameView {
             gumHits: 0,
             cased: false,
             caseHits: 0,
+            chocolate: false,
             x,
             y: startY,
             scale: 1,
@@ -597,6 +603,7 @@ export class GameView {
             gumHits: 0,
             cased: false,
             caseHits: 0,
+            chocolate: false,
             x,
             y: startY,
             scale: 1,
@@ -675,6 +682,46 @@ export class GameView {
         step.ids.forEach((id, i) => {
           const s = this.sprites.get(id);
           if (s) s.caseHits = step.hits[i];
+        });
+        await Promise.all(step.ids.map((id) => this.pulse(id)));
+        break;
+      }
+      case "choco-clear": {
+        // adjacent match broke chocolate — pop the tiles out
+        playSound("clear");
+        this.viewChoco = Math.max(0, this.viewChoco - step.cells.length);
+        await this.popIds(step.cells, step.ids);
+        break;
+      }
+      case "choco-spread": {
+        // chocolate crept onto a candy cell — turn it into a chocolate sprite
+        playSound("invalid");
+        this.viewChoco += step.cells.length;
+        step.cells.forEach((p, i) => {
+          const id = this.idAt(p);
+          if (id != null) this.sprites.delete(id); // remove the eaten candy
+          const { x, y } = cellCenter(this.layout, p.row, p.col);
+          this.sprites.set(step.ids[i], {
+            id: step.ids[i],
+            colour: null,
+            special: null,
+            ingredient: false,
+            ingredientKind: 0,
+            blocker: false,
+            blockerHits: 0,
+            frozen: false,
+            box: false,
+            boxHits: 0,
+            gum: false,
+            gumHits: 0,
+            cased: false,
+            caseHits: 0,
+            chocolate: true,
+            x,
+            y,
+            scale: 0.5,
+          });
+          this.setAt(p, step.ids[i]);
         });
         await Promise.all(step.ids.map((id) => this.pulse(id)));
         break;
@@ -1244,6 +1291,7 @@ export class GameView {
         s.gumHits,
         s.cased,
         s.caseHits,
+        s.chocolate,
       );
     };
     for (const s of this.sprites.values())
@@ -1492,6 +1540,24 @@ export class GameView {
         panelY + panelH * 0.68,
         goalW * 0.9,
         panelH * 0.36,
+        accent,
+      );
+      return;
+    }
+    if (spec.kind === "clear-chocolate") {
+      k.drawText({
+        text: "Chocolate left",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.22,
+        color: dark,
+        anchor: "center",
+      });
+      this.fitText(
+        `🍫 ${this.viewChoco}`,
+        goalX + goalW / 2,
+        panelY + panelH * 0.68,
+        goalW * 0.9,
+        panelH * 0.38,
         accent,
       );
       return;

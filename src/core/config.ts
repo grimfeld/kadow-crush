@@ -88,6 +88,13 @@ export interface ChallengeConfig {
   /** Adjacent-Match hits to break each cased item free (default 2). */
   caseLayers?: number;
   /**
+   * Clear-the-Chocolate: number of chocolate tiles placed at start. Chocolate is
+   * immovable; an adjacent Match clears one, and on any Move that clears none it
+   * spreads onto a neighbouring candy cell (capped). Pair with a clear-chocolate
+   * objective.
+   */
+  chocolate?: number;
+  /**
    * Number of Frozen candies (Color Lock) scattered at start. Each is frosted
    * over — unmatchable until an adjacent Match thaws it into a normal candy.
    */
@@ -465,6 +472,25 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Every few candies it drops are striped specials!",
       "Line them up or swap them to clear whole rows.",
       "Win: reach the points shown before your moves run out.",
+    ],
+  },
+  {
+    id: "choco-meltdown",
+    name: "Choco Meltdown",
+    blurb: "Chocolate covers the floor and spreads — melt it all away!",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 30,
+    objective: { kind: "clear-chocolate" },
+    chocolate: 7,
+    tutorial: [
+      "Brown chocolate 🍫 covers the bottom of the board.",
+      "Pop a match right next to chocolate to melt a piece.",
+      "Careful — on any turn you melt NONE, it spreads!",
+      "Melt at least one piece each turn to keep it shrinking.",
+      "Win: clear every bit of chocolate before moves run out.",
     ],
   },
   {

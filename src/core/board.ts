@@ -56,6 +56,7 @@ export class Board {
   private readonly gumLayers: number;
   private readonly casedCount: number;
   private readonly caseLayers: number;
+  private readonly chocolateCount: number;
   /** Cased items freed so far (Free-It objective). */
   itemsFreed = 0;
   /** Generators by column, with their emitted special, period, and a running
@@ -88,6 +89,7 @@ export class Board {
     this.gumLayers = Math.max(1, cfg.gumLayers ?? 2);
     this.casedCount = cfg.cased ?? 0;
     this.caseLayers = Math.max(1, cfg.caseLayers ?? 2);
+    this.chocolateCount = cfg.chocolate ?? 0;
     this.generators = new Map(
       (cfg.generators ?? []).map((g) => [
         g.col,
@@ -185,13 +187,17 @@ export class Board {
   private immovable(cell: Candy | null): boolean {
     return (
       !!cell &&
-      (!!cell.blocker || !!cell.frozen || !!cell.box || !!cell.gum || !!cell.cased)
+      (!!cell.blocker || !!cell.frozen || !!cell.box || !!cell.gum ||
+        !!cell.cased || !!cell.chocolate)
     );
   }
 
   /** A candy that acts as a gravity wall: candies stack on it, none fall past. */
   private isWall(cell: Candy | null): boolean {
-    return !!cell && (!!cell.blocker || !!cell.box || !!cell.gum || !!cell.cased);
+    return (
+      !!cell &&
+      (!!cell.blocker || !!cell.box || !!cell.gum || !!cell.cased || !!cell.chocolate)
+    );
   }
 
   // ---- generation ---------------------------------------------------------
@@ -218,6 +224,10 @@ export class Board {
       cased: true,
       caseHits: this.caseLayers,
     };
+  }
+
+  private newChocolate(): Candy {
+    return { id: this.nextId++, colour: null, special: null, chocolate: true };
   }
 
   private newBlocker(): Candy {
@@ -259,6 +269,7 @@ export class Board {
   private generateSolvableGrid(): Grid {
     for (;;) {
       const grid = this.fillNoMatches();
+      this.placeChocolate(grid);
       this.placeBlockers(grid);
       this.placeGum(grid);
       this.placeCased(grid);
@@ -326,6 +337,23 @@ export class Board {
     }
     const n = Math.min(this.gumCount, cols.length);
     for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newGum();
+  }
+
+  /**
+   * Place a block of chocolate anchored to the bottom-left, filling the floor
+   * upward. Bottom-anchored so no candy is ever trapped beneath a chocolate
+   * wall (a column fills down to its first chocolate). It still spreads upward
+   * during play.
+   */
+  private placeChocolate(grid: Grid) {
+    if (this.chocolateCount <= 0) return;
+    let left = Math.min(this.chocolateCount, this.rows * this.cols);
+    // fill from the bottom row up, left to right within each row
+    for (let r = this.rows - 1; r >= 0 && left > 0; r--)
+      for (let c = 0; c < this.cols && left > 0; c++) {
+        grid[r][c] = this.newChocolate();
+        left--;
+      }
   }
 
   /** Place cased (trapped) items on distinct free bottom-row columns. */
@@ -1037,6 +1065,7 @@ export class Board {
     this.clearAdjacentBlockers(cl, steps, cleared);
     this.thawAdjacentFrozen(cl, steps);
     this.hitAdjacentBoxes(cl, steps);
+    this.clearAdjacentChocolate(cl, steps);
     // chain-detonate any specials the blast covered
     for (const c of chain) this.detonate(c.pos, c.special, {}, steps, cleared);
   }
@@ -1049,7 +1078,8 @@ export class Board {
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
         if (cell && cell.colour === from && !cell.special && !cell.ingredient &&
-            !cell.blocker && !cell.frozen && !cell.box && !cell.gum && !cell.cased) {
+            !cell.blocker && !cell.frozen && !cell.box && !cell.gum && !cell.cased &&
+            !cell.chocolate) {
           cell.colour = to;
           cells.push({ row: r, col: c });
           ids.push(cell.id);
@@ -1093,7 +1123,7 @@ export class Board {
         }
         const cell = this.grid[r][c];
         if (!cell) continue;
-        if ((cell.box || cell.blocker || cell.gum || cell.cased) && d < obstacleD) {
+        if ((cell.box || cell.blocker || cell.gum || cell.cased || cell.chocolate) && d < obstacleD) {
           obstacleD = d;
           obstacle = { row: r, col: c };
         }
@@ -1136,7 +1166,8 @@ export class Board {
         candy.frozen ||
         candy.box ||
         candy.gum ||
-        candy.cased
+        candy.cased ||
+        candy.chocolate
       )
         continue;
       if (candy.colour !== null) cleared.push(candy.colour);
@@ -1293,6 +1324,78 @@ export class Board {
     if (cells.length) steps.push({ kind: "thaw", cells, ids });
   }
 
+  /** Total chocolate tiles on the board (0 ⇒ Clear-Chocolate objective met). */
+  chocolateRemaining(): number {
+    let n = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) if (this.grid[r][c]?.chocolate) n++;
+    return n;
+  }
+
+  /** Remove chocolate tiles orthogonally adjacent to the just-cleared cells. */
+  private clearAdjacentChocolate(clearedCells: Pos[], steps: Step[]) {
+    if (this.chocolateCount <= 0) return;
+    const seen = new Set<string>();
+    const cells: Pos[] = [];
+    const ids: number[] = [];
+    for (const p of clearedCells) {
+      for (const [dr, dc] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ]) {
+        const nr = p.row + dr;
+        const nc = p.col + dc;
+        if (!this.inBounds(nr, nc)) continue;
+        const cell = this.grid[nr][nc];
+        const k = `${nr},${nc}`;
+        if (cell?.chocolate && !seen.has(k)) {
+          seen.add(k);
+          cells.push({ row: nr, col: nc });
+          ids.push(cell.id);
+          this.grid[nr][nc] = null;
+        }
+      }
+    }
+    if (cells.length) steps.push({ kind: "choco-clear", cells, ids });
+  }
+
+  /**
+   * Chocolate spread: on a Move that cleared no chocolate, one chocolate tile
+   * eats a neighbouring candy cell (turns it into chocolate). Capped at ~55% of
+   * the board. Returns the Step, or null. Deterministic via the seeded rng.
+   */
+  spreadChocolate(): Step | null {
+    if (this.chocolateCount <= 0) return null;
+    const cap = Math.floor(this.rows * this.cols * 0.55);
+    if (this.chocolateRemaining() >= cap) return null;
+    // candidate = a plain candy cell orthogonally adjacent to chocolate
+    const candidates: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (!cell || cell.special !== null || this.immovable(cell) || cell.ingredient)
+          continue;
+        const touches = [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ].some(([dr, dc]) => {
+          const nr = r + dr;
+          const nc = c + dc;
+          return this.inBounds(nr, nc) && this.grid[nr][nc]?.chocolate;
+        });
+        if (touches) candidates.push({ row: r, col: c });
+      }
+    if (candidates.length === 0) return null;
+    const p = candidates[this.rng.int(candidates.length)];
+    const choc = this.newChocolate();
+    this.grid[p.row][p.col] = choc;
+    return { kind: "choco-spread", cells: [p], ids: [choc.id] };
+  }
+
   /**
    * Knock Gift Boxes orthogonally adjacent to the just-cleared cells. Each loses
    * one hit; a box at zero cracks open into a falling Ingredient. Emits a
@@ -1373,6 +1476,7 @@ export class Board {
         this.clearAdjacentBlockers(cleared2.cells, steps, cleared);
         this.thawAdjacentFrozen(cleared2.cells, steps);
         this.hitAdjacentBoxes(cleared2.cells, steps);
+        this.clearAdjacentChocolate(cleared2.cells, steps);
 
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {
@@ -1675,7 +1779,7 @@ export class Board {
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
         if (!cell || cell.blocker || cell.ingredient || cell.frozen || cell.box ||
-            cell.gum || cell.cased)
+            cell.gum || cell.cased || cell.chocolate)
           continue;
         movable.push(cell);
         slots.push({ row: r, col: c });
@@ -1692,7 +1796,7 @@ export class Board {
         row.map((cell) =>
           cell &&
           (cell.blocker || cell.ingredient || cell.frozen || cell.box ||
-            cell.gum || cell.cased)
+            cell.gum || cell.cased || cell.chocolate)
             ? cell
             : null,
         ),

@@ -14,6 +14,8 @@ import {
   CELL_BG,
   CASE_FILL,
   CASE_OUTLINE,
+  CHOCO_FILL,
+  CHOCO_OUTLINE,
   COLOUR_THEMES,
   FROST_FILL,
   FROST_OUTLINE,
@@ -52,6 +54,7 @@ export function drawCandy(
   gumHits = 0,
   cased = false,
   caseHits = 0,
+  chocolate = false,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
@@ -83,6 +86,31 @@ export function drawCandy(
         });
       }
     }
+    return;
+  }
+
+  // Chocolate: a glossy brown block (immovable; spreads).
+  if (chocolate) {
+    k.drawRect({
+      pos: k.vec2(x - half, y - half),
+      width: tile,
+      height: tile,
+      radius: tile * 0.14,
+      color: k.rgb(CHOCO_FILL[0], CHOCO_FILL[1], CHOCO_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.05), color: k.rgb(CHOCO_OUTLINE[0], CHOCO_OUTLINE[1], CHOCO_OUTLINE[2]) },
+    });
+    // a grid of squares to read as a chocolate bar
+    const s2 = tile * 0.36;
+    for (const ox of [-1, 1])
+      for (const oy of [-1, 1])
+        k.drawRect({
+          pos: k.vec2(x + ox * tile * 0.2 - s2 / 2, y + oy * tile * 0.2 - s2 / 2),
+          width: s2,
+          height: s2,
+          radius: tile * 0.04,
+          color: k.rgb(CHOCO_OUTLINE[0], CHOCO_OUTLINE[1], CHOCO_OUTLINE[2]),
+          opacity: 0.5,
+        });
     return;
   }
 

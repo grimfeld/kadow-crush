@@ -82,6 +82,10 @@ export const GUM_OUTLINE: [number, number, number] = [210, 80, 150];
 export const CASE_FILL: [number, number, number] = [205, 170, 120];
 export const CASE_OUTLINE: [number, number, number] = [140, 100, 60];
 
+// Chocolate (Clear-the-Chocolate) — a glossy brown bar that spreads.
+export const CHOCO_FILL: [number, number, number] = [110, 70, 40];
+export const CHOCO_OUTLINE: [number, number, number] = [70, 42, 22];
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

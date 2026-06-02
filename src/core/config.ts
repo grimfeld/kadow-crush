@@ -80,6 +80,14 @@ export interface ChallengeConfig {
    */
   generators?: { col: number; special: SpecialType; every: number }[];
   /**
+   * Free-It: number of cased (trapped) items placed at start. Each is locked in
+   * `caseLayers` of breakable casing; an adjacent Match chips a layer, and the
+   * item is freed at zero. Pair with a `free-items` objective of the same count.
+   */
+  cased?: number;
+  /** Adjacent-Match hits to break each cased item free (default 2). */
+  caseLayers?: number;
+  /**
    * Number of Frozen candies (Color Lock) scattered at start. Each is frosted
    * over — unmatchable until an adjacent Match thaws it into a normal candy.
    */
@@ -457,6 +465,26 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Every few candies it drops are striped specials!",
       "Line them up or swap them to clear whole rows.",
       "Win: reach the points shown before your moves run out.",
+    ],
+  },
+  {
+    id: "jail-break",
+    name: "Jail Break",
+    blurb: "Little friends are caged on the floor — break them free!",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 28,
+    objective: { kind: "free-items", count: 3 },
+    cased: 3,
+    caseLayers: 2,
+    tutorial: [
+      "Three friends 🐻 are trapped in cages on the floor.",
+      "Pop a match right next to a cage to crack it.",
+      "The dots show how many more hits the cage needs.",
+      "Break every cage to set the friends free!",
+      "Win: free all 3 before your moves run out.",
     ],
   },
 ];

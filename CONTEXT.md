@@ -91,6 +91,7 @@ The Objective generalises beyond colour-collection. Each Challenge has exactly o
 - **Build a Burger** (Collect Ingredients) — bring each distinct Ingredient (burger part) off the bottom of the Board; collecting them all completes the burger and wins. When the target count exceeds the burger-part set, the goal reads as *catch N parts* (see Avalanche) and the HUD shows a running tally.
 - **Make Specials** — create a number of Special Candies (striped / colour bomb) within the move budget. Each Special created counts once.
 - **Beat the Clock** — reach a Score target within a real-seconds time limit; the move budget does not apply. The Game accrues elapsed time from the view's per-frame tick, and the HUD shows a countdown in place of Moves.
+- **Free It** — break the casing off every trapped (Cased) item before moves run out.
 
 ### Score
 A running point total for a Challenge whose Objective is Score. Points accrue as Candies clear.
@@ -112,6 +113,15 @@ An immovable Cell occupant. It never Matches and blocks gravity (Candies do not 
 
 ### Bubble Gum
 An immovable, gravity-blocking floor tile like a Blocker, with multiple layers (`gumLayers`). An adjacent Match chips one layer; the hit that takes it to zero **pops a 3×3 explosion** around it that clears candies and detonates any Special in range. A Cell is exactly one of: normal Candy, Blocker, Jelly-coated Candy, or Bubble Gum — the three obstacle types don't stack on one Cell, but each can have layers.
+
+### Cased Item (Free-It)
+A trapped collectible locked inside breakable casing — immovable and gravity-blocking like a Blocker, with `caseLayers` of casing. An adjacent Match chips one layer; at zero the item is **freed** (removed and counted toward the Free-It objective).
+
+### Generator
+A machine above certain columns. Its column refills with normal Candies, but every Nth Candy it emits becomes a chosen Special (configured per Challenge as `{col, special, every}`) — steady Special pressure for harder levels. View-only: a machine icon is drawn above each generator column.
+
+### Sugar Crush
+The finale when the objective is met with Moves to spare: each leftover Move is spent turning a random Candy into a Striped Special, then they all detonate in one chaining cascade (scored) before the win. Toggleable from the menu (persisted); not applied to timed levels.
 
 ### Frozen Candy (Color Lock)
 A Candy encased in frost. It keeps a real Colour but never Matches and cannot be swapped while frozen; it still falls with gravity. A Match in an orthogonally-adjacent Cell **thaws** it into an ordinary Candy.

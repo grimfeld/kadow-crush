@@ -84,6 +84,8 @@ export class Game {
         return this.specialsMade >= spec.count;
       case "beat-clock":
         return this.score >= spec.target;
+      case "free-items":
+        return this.board.itemsFreed >= spec.count;
     }
   }
 

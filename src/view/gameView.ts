@@ -45,6 +45,8 @@ interface Sprite {
   boxHits: number;
   gum: boolean;
   gumHits: number;
+  cased: boolean;
+  caseHits: number;
   x: number;
   y: number;
   scale: number;
@@ -87,6 +89,8 @@ export class GameView {
   // Total burger parts collected so far (Avalanche needs a running count, not a
   // distinct-kind set, since many parts of the same kind rain in).
   private viewCollected = 0;
+  // Cased items freed so far, mirrored for the HUD (Free-It).
+  private viewFreed = 0;
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
@@ -335,6 +339,7 @@ export class GameView {
     this.viewJelly = this.game.board.jelly.map((row) => row.slice());
     this.viewBurger = new Set(this.game.board.collectedIngredientKinds);
     this.viewCollected = this.game.board.ingredientsCollected;
+    this.viewFreed = this.game.board.itemsFreed;
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -353,6 +358,8 @@ export class GameView {
           boxHits: candy.boxHits ?? 0,
           gum: !!candy.gum,
           gumHits: candy.gumHits ?? 0,
+          cased: !!candy.cased,
+          caseHits: candy.caseHits ?? 0,
           x,
           y,
           scale: 1,
@@ -521,6 +528,8 @@ export class GameView {
             boxHits: 0,
             gum: false,
             gumHits: 0,
+            cased: false,
+            caseHits: 0,
             x,
             y: startY,
             scale: 1,
@@ -551,6 +560,8 @@ export class GameView {
             boxHits: 0,
             gum: false,
             gumHits: 0,
+            cased: false,
+            caseHits: 0,
             x,
             y: startY,
             scale: 1,
@@ -619,6 +630,28 @@ export class GameView {
           const { x, y } = cellCenter(this.layout, p.row, p.col);
           this.effects.flash(x, y, this.layout.cell * 2.2, [255, 120, 190]);
           this.particles.burst(x, y, [255, 140, 200], 10);
+        }
+        await this.popIds(step.cells, step.ids);
+        break;
+      }
+      case "case-hit": {
+        // casing chipped — drop a pip and rattle the cage
+        playSound("clear");
+        step.ids.forEach((id, i) => {
+          const s = this.sprites.get(id);
+          if (s) s.caseHits = step.hits[i];
+        });
+        await Promise.all(step.ids.map((id) => this.pulse(id)));
+        break;
+      }
+      case "item-free": {
+        // casing broken — the trapped item pops free; celebrate
+        playSound("special");
+        this.viewFreed += step.cells.length;
+        for (const p of step.cells) {
+          const { x, y } = cellCenter(this.layout, p.row, p.col);
+          this.effects.flash(x, y, this.layout.cell * 2, [120, 220, 140]);
+          this.particles.burst(x, y, [120, 230, 150], 12);
         }
         await this.popIds(step.cells, step.ids);
         break;
@@ -1168,6 +1201,8 @@ export class GameView {
         s.blockerHits,
         s.gum,
         s.gumHits,
+        s.cased,
+        s.caseHits,
       );
     };
     for (const s of this.sprites.values())
@@ -1363,6 +1398,24 @@ export class GameView {
         panelY + panelH * 0.68,
         goalW * 0.9,
         panelH * 0.38,
+        accent,
+      );
+      return;
+    }
+    if (spec.kind === "free-items") {
+      k.drawText({
+        text: "Freed",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.22,
+        color: dark,
+        anchor: "center",
+      });
+      this.fitText(
+        `🐻 ${Math.min(this.viewFreed, spec.count)} / ${spec.count}`,
+        goalX + goalW / 2,
+        panelY + panelH * 0.68,
+        goalW * 0.9,
+        panelH * 0.36,
         accent,
       );
       return;

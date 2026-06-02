@@ -54,6 +54,10 @@ export class Board {
   private readonly boxHits: number;
   private readonly gumCount: number;
   private readonly gumLayers: number;
+  private readonly casedCount: number;
+  private readonly caseLayers: number;
+  /** Cased items freed so far (Free-It objective). */
+  itemsFreed = 0;
   /** Generators by column, with their emitted special, period, and a running
    *  refill counter (how many candies that generator has emitted). */
   private readonly generators: Map<
@@ -82,6 +86,8 @@ export class Board {
     this.boxHits = cfg.boxHits ?? 2;
     this.gumCount = cfg.gum ?? 0;
     this.gumLayers = Math.max(1, cfg.gumLayers ?? 2);
+    this.casedCount = cfg.cased ?? 0;
+    this.caseLayers = Math.max(1, cfg.caseLayers ?? 2);
     this.generators = new Map(
       (cfg.generators ?? []).map((g) => [
         g.col,
@@ -177,12 +183,15 @@ export class Board {
   /** A candy that cannot be swapped by the player (Blocker, Frozen, or a sealed
    *  Gift Box). */
   private immovable(cell: Candy | null): boolean {
-    return !!cell && (!!cell.blocker || !!cell.frozen || !!cell.box || !!cell.gum);
+    return (
+      !!cell &&
+      (!!cell.blocker || !!cell.frozen || !!cell.box || !!cell.gum || !!cell.cased)
+    );
   }
 
   /** A candy that acts as a gravity wall: candies stack on it, none fall past. */
   private isWall(cell: Candy | null): boolean {
-    return !!cell && (!!cell.blocker || !!cell.box || !!cell.gum);
+    return !!cell && (!!cell.blocker || !!cell.box || !!cell.gum || !!cell.cased);
   }
 
   // ---- generation ---------------------------------------------------------
@@ -198,6 +207,16 @@ export class Board {
       special: null,
       ingredient: true,
       ingredientKind: kind,
+    };
+  }
+
+  private newCased(): Candy {
+    return {
+      id: this.nextId++,
+      colour: null,
+      special: null,
+      cased: true,
+      caseHits: this.caseLayers,
     };
   }
 
@@ -242,6 +261,7 @@ export class Board {
       const grid = this.fillNoMatches();
       this.placeBlockers(grid);
       this.placeGum(grid);
+      this.placeCased(grid);
       this.placeBoxes(grid);
       this.placeIngredients(grid);
       this.placeFrozen(grid);
@@ -306,6 +326,20 @@ export class Board {
     }
     const n = Math.min(this.gumCount, cols.length);
     for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newGum();
+  }
+
+  /** Place cased (trapped) items on distinct free bottom-row columns. */
+  private placeCased(grid: Grid) {
+    if (this.casedCount <= 0) return;
+    const r = this.rows - 1;
+    const cols: number[] = [];
+    for (let c = 0; c < this.cols; c++) if (!this.isWall(grid[r][c])) cols.push(c);
+    for (let i = cols.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [cols[i], cols[j]] = [cols[j], cols[i]];
+    }
+    const n = Math.min(this.casedCount, cols.length);
+    for (let i = 0; i < n; i++) grid[r][cols[i]] = this.newCased();
   }
 
   /** Place Gift Boxes on distinct bottom-row columns (so a cracked box becomes
@@ -998,7 +1032,7 @@ export class Board {
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
         if (cell && cell.colour === from && !cell.special && !cell.ingredient &&
-            !cell.blocker && !cell.frozen && !cell.box && !cell.gum) {
+            !cell.blocker && !cell.frozen && !cell.box && !cell.gum && !cell.cased) {
           cell.colour = to;
           cells.push({ row: r, col: c });
           ids.push(cell.id);
@@ -1042,7 +1076,7 @@ export class Board {
         }
         const cell = this.grid[r][c];
         if (!cell) continue;
-        if ((cell.box || cell.blocker || cell.gum) && d < obstacleD) {
+        if ((cell.box || cell.blocker || cell.gum || cell.cased) && d < obstacleD) {
           obstacleD = d;
           obstacle = { row: r, col: c };
         }
@@ -1079,7 +1113,14 @@ export class Board {
       // adjacent-Match clears a Blocker, thaws Frost, or knocks a Box). Without
       // this guard a striped/bomb blast would silently delete a Box instead of
       // cracking it open.
-      if (candy.ingredient || candy.blocker || candy.frozen || candy.box || candy.gum)
+      if (
+        candy.ingredient ||
+        candy.blocker ||
+        candy.frozen ||
+        candy.box ||
+        candy.gum ||
+        candy.cased
+      )
         continue;
       if (candy.colour !== null) cleared.push(candy.colour);
       outCells.push(p);
@@ -1109,7 +1150,7 @@ export class Board {
    * in range. A cell is chipped at most once per call (`seen`).
    */
   private clearAdjacentBlockers(clearedCells: Pos[], steps: Step[], cleared: Colour[] = []) {
-    if (this.blockerCount <= 0 && this.gumCount <= 0) return;
+    if (this.blockerCount <= 0 && this.gumCount <= 0 && this.casedCount <= 0) return;
     const seen = new Set<string>();
     const removeCells: Pos[] = [];
     const removeIds: number[] = [];
@@ -1121,6 +1162,11 @@ export class Board {
     const gumHitLeft: number[] = [];
     const popped: Pos[] = []; // gum tiles that pop this call
     const poppedIds: number[] = [];
+    const caseHitCells: Pos[] = [];
+    const caseHitIds: number[] = [];
+    const caseHitLeft: number[] = [];
+    const freedCells: Pos[] = [];
+    const freedIds: number[] = [];
 
     for (const p of clearedCells) {
       for (const [dr, dc] of [
@@ -1159,6 +1205,19 @@ export class Board {
             gumHitIds.push(cell.id);
             gumHitLeft.push(cell.gumHits);
           }
+        } else if (cell?.cased) {
+          seen.add(k);
+          cell.caseHits = (cell.caseHits ?? 1) - 1;
+          if (cell.caseHits <= 0) {
+            freedCells.push({ row: nr, col: nc });
+            freedIds.push(cell.id);
+            this.grid[nr][nc] = null;
+            this.itemsFreed++;
+          } else {
+            caseHitCells.push({ row: nr, col: nc });
+            caseHitIds.push(cell.id);
+            caseHitLeft.push(cell.caseHits);
+          }
         }
       }
     }
@@ -1168,6 +1227,10 @@ export class Board {
       steps.push({ kind: "blocker-clear", cells: removeCells, ids: removeIds });
     if (gumHitCells.length)
       steps.push({ kind: "gum-hit", cells: gumHitCells, ids: gumHitIds, hits: gumHitLeft });
+    if (caseHitCells.length)
+      steps.push({ kind: "case-hit", cells: caseHitCells, ids: caseHitIds, hits: caseHitLeft });
+    if (freedCells.length)
+      steps.push({ kind: "item-free", cells: freedCells, ids: freedIds });
     if (popped.length) {
       steps.push({ kind: "gum-pop", cells: popped, ids: poppedIds });
       // each popped gum bursts its 3×3 (detonating any Special in range)
@@ -1594,7 +1657,8 @@ export class Board {
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         const cell = this.grid[r][c];
-        if (!cell || cell.blocker || cell.ingredient || cell.frozen || cell.box || cell.gum)
+        if (!cell || cell.blocker || cell.ingredient || cell.frozen || cell.box ||
+            cell.gum || cell.cased)
           continue;
         movable.push(cell);
         slots.push({ row: r, col: c });
@@ -1609,7 +1673,9 @@ export class Board {
       // Start from the fixed occupants, then drop the shuffled candies in.
       const grid: Grid = this.grid.map((row) =>
         row.map((cell) =>
-          cell && (cell.blocker || cell.ingredient || cell.frozen || cell.box || cell.gum)
+          cell &&
+          (cell.blocker || cell.ingredient || cell.frozen || cell.box ||
+            cell.gum || cell.cased)
             ? cell
             : null,
         ),

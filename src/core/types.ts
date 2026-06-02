@@ -63,6 +63,15 @@ export interface Candy {
   box?: boolean;
   /** Remaining adjacent-Matches needed to crack a Gift Box open. */
   boxHits?: number;
+  /**
+   * Cased item (Free-It challenge): a trapped collectible locked inside
+   * breakable casing. Immovable and gravity-blocking like a Blocker; an adjacent
+   * Match chips one `caseHits` layer, and when it reaches zero the item is freed
+   * (removed and counted toward the objective).
+   */
+  cased?: boolean;
+  /** Remaining adjacent-Match hits to break a Cased item free (default 2). */
+  caseHits?: number;
 }
 
 export interface Pos {
@@ -116,6 +125,10 @@ export type Step =
   // Bubble Gum popped: `cells`/`ids` are the gum tiles; the resulting 3×3
   // explosion clears are emitted as their own special-activate steps.
   | { kind: "gum-pop"; cells: Pos[]; ids: number[] }
+  // Cased items chipped (casing layer lost, not yet freed); `hits` = remaining.
+  | { kind: "case-hit"; cells: Pos[]; ids: number[]; hits: number[] }
+  // Cased items freed (casing broken): they pop free and count toward the goal.
+  | { kind: "item-free"; cells: Pos[]; ids: number[] }
   // Frozen candies thawed by an adjacent Match (frost off; candy stays).
   | { kind: "thaw"; cells: Pos[]; ids: number[] }
   // Gift Boxes knocked by an adjacent Match (parallel `hits` = remaining).
@@ -146,7 +159,9 @@ export type ObjectiveSpec =
   | { kind: "make-specials"; count: number }
   // Beat-the-Clock (Time Crunch): reach `target` score within `seconds`. The
   // move budget is irrelevant; the view feeds elapsed time to the Game.
-  | { kind: "beat-clock"; target: number; seconds: number };
+  | { kind: "beat-clock"; target: number; seconds: number }
+  // Free-It: break the casing off all `count` trapped items before moves run out.
+  | { kind: "free-items"; count: number };
 
 export type ObjectiveKind = ObjectiveSpec["kind"];
 

@@ -12,6 +12,8 @@ import {
   BOX_OUTLINE,
   BURGER_PARTS,
   CELL_BG,
+  CASE_FILL,
+  CASE_OUTLINE,
   COLOUR_THEMES,
   FROST_FILL,
   FROST_OUTLINE,
@@ -48,6 +50,8 @@ export function drawCandy(
   blockerHits = 0,
   gum = false,
   gumHits = 0,
+  cased = false,
+  caseHits = 0,
 ) {
   const tile = cell * 0.86 * scale; // tile side length
   const half = tile / 2;
@@ -79,6 +83,32 @@ export function drawCandy(
         });
       }
     }
+    return;
+  }
+
+  // Cased item: a trapped critter behind breakable casing; pips = hits left.
+  if (cased) {
+    k.drawRect({
+      pos: k.vec2(x - half, y - half),
+      width: tile,
+      height: tile,
+      radius: tile * 0.2,
+      color: k.rgb(CASE_FILL[0], CASE_FILL[1], CASE_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.06), color: k.rgb(CASE_OUTLINE[0], CASE_OUTLINE[1], CASE_OUTLINE[2]) },
+    });
+    // the trapped item peeking out
+    k.drawText({ text: "🐻", pos: k.vec2(x, y - tile * 0.04), size: tile * 0.5, anchor: "center", color: white });
+    // bar "cage" overlay
+    for (const off of [-tile * 0.22, 0, tile * 0.22]) {
+      k.drawRect({
+        pos: k.vec2(x + off - tile * 0.02, y - half * 0.78),
+        width: tile * 0.04,
+        height: tile * 0.9,
+        color: k.rgb(CASE_OUTLINE[0], CASE_OUTLINE[1], CASE_OUTLINE[2]),
+        opacity: 0.8,
+      });
+    }
+    drawHitPips(k, x, y + half * 0.7, tile, caseHits, CASE_OUTLINE);
     return;
   }
 

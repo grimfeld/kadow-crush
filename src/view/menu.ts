@@ -51,6 +51,8 @@ export function objectiveSummary(cfg: ChallengeConfig): string {
       return `Make ${o.count} special candies`;
     case "beat-clock":
       return `${o.target.toLocaleString()} points in ${o.seconds}s`;
+    case "free-items":
+      return o.count === 1 ? "Free the trapped friend" : `Free ${o.count} trapped friends`;
   }
 }
 

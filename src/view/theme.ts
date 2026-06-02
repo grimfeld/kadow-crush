@@ -78,6 +78,10 @@ export const BOX_OUTLINE: [number, number, number] = [196, 142, 60];
 export const GUM_FILL: [number, number, number] = [255, 150, 200];
 export const GUM_OUTLINE: [number, number, number] = [210, 80, 150];
 
+// Cased item (Free-It) — a wooden crate/cage holding a trapped critter.
+export const CASE_FILL: [number, number, number] = [205, 170, 120];
+export const CASE_OUTLINE: [number, number, number] = [140, 100, 60];
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

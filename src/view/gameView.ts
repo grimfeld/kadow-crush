@@ -84,6 +84,8 @@ export class GameView {
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
+  // Menu scroll-drag: a press that turns into a scroll once the finger moves.
+  private menuDrag: { startY: number; lastY: number; moved: boolean } | null = null;
   private particles: Particles;
   private music = new MusicPlayer();
   private prevOutcome: "playing" | "won" | "lost" = "playing";
@@ -145,6 +147,7 @@ export class GameView {
     this.mode = "menu";
     this.selected = null;
     this.dragStart = null;
+    this.menuDrag = null;
     this.sprites.clear();
   }
 
@@ -547,6 +550,11 @@ export class GameView {
   private bind() {
     const k = this.k;
 
+    // Wheel/trackpad scrolls the menu grid.
+    k.onScroll((delta) => {
+      if (this.mode === "menu") this.menu.scrollBy(delta.y);
+    });
+
     k.onMousePress(() => {
       // First gesture unlocks audio (autoplay policy); starts saved track.
       this.music.unlock();
@@ -556,14 +564,12 @@ export class GameView {
         if (this.menu.hitMusic(p.x, p.y)) {
           playSound("swap");
           this.music.cycle();
+          this.menuDrag = null;
           return;
         }
-        const cfg = this.menu.hitTest(p.x, p.y);
-        if (cfg) {
-          playSound("swap");
-          this.pending = cfg;
-          this.mode = "tutorial"; // show the how-to-play screen first
-        }
+        // begin a press: it becomes a scroll-drag if the finger moves, else a
+        // tap-to-select on release.
+        this.menuDrag = { startY: p.y, lastY: p.y, moved: false };
         return;
       }
       if (this.mode === "tutorial") {
@@ -600,7 +606,32 @@ export class GameView {
       }
     });
 
+    // Drag the menu grid to scroll it (touch + mouse).
+    k.onMouseMove(() => {
+      if (this.mode !== "menu" || !this.menuDrag) return;
+      const p = k.mousePos();
+      const dy = p.y - this.menuDrag.lastY;
+      this.menuDrag.lastY = p.y;
+      if (Math.abs(p.y - this.menuDrag.startY) > 6) this.menuDrag.moved = true;
+      if (this.menuDrag.moved) this.menu.scrollBy(-dy); // drag down → content down
+    });
+
     k.onMouseRelease(() => {
+      // Menu: a press that didn't turn into a scroll is a tap-to-select.
+      if (this.mode === "menu") {
+        const drag = this.menuDrag;
+        this.menuDrag = null;
+        if (drag && !drag.moved) {
+          const p = k.mousePos();
+          const cfg = this.menu.hitTest(p.x, p.y);
+          if (cfg) {
+            playSound("swap");
+            this.pending = cfg;
+            this.mode = "tutorial";
+          }
+        }
+        return;
+      }
       if (this.busy || !this.dragStart) {
         this.dragStart = null;
         return;

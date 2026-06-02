@@ -68,7 +68,7 @@ At level start: the Board is filled with random Colours such that there are no p
 One playable definition on the level-select menu: a board size, a colour count, a move budget, an Objective, and any board mechanics (Jelly, Blockers, Ingredients). The set of Challenges is fixed; the Board *layout* of a Challenge is generated from a fresh random seed each time it is played, so the same Challenge plays differently every session while its identity and difficulty stay stable.
 
 ### Level Select
-The menu screen listing the Challenges. The player picks one to play and returns to it on Win or Loss.
+The menu screen listing the Challenges as a 2-column grid of fixed-height cards. The grid scrolls vertically (wheel or drag) when it overflows the viewport, with a faint scrollbar; the title and music chip stay fixed above it. The player picks one to play and returns to it on Win or Loss.
 
 ### Tutorial
 A beginner-oriented screen shown after a Challenge is picked and before it starts. It explains the universal controls (swap two adjacent Candies; line up 3+ to clear) and the Challenge's own goal and win condition, then a Play button begins the level. Per-Challenge wording lives in the Challenge definition.

@@ -54,20 +54,42 @@ export function objectiveSummary(cfg: ChallengeConfig): string {
   }
 }
 
+// A challenge card is a fixed height regardless of how many challenges there
+// are; the grid scrolls vertically when it overflows the viewport.
+const CARD_H = 116;
+
 export class MenuScreen {
   private cards: CardRect[] = [];
   private musicRect = { x: 0, y: 0, w: 0, h: 0 };
+  // Vertical scroll offset of the card grid (px), clamped to [0, maxScroll].
+  private scrollY = 0;
+  private maxScroll = 0;
+  // The scrollable viewport (below the title), used for masking + clamping.
+  private viewTop = 0;
+  private viewBottom = 0;
 
   constructor(private k: KAPLAYCtx) {}
 
   /** Returns the picked Challenge if (px,py) hits a card, else null. */
   hitTest(px: number, py: number): ChallengeConfig | null {
+    // Ignore taps outside the scroll viewport (e.g. on the title strip).
+    if (py < this.viewTop || py > this.viewBottom) return null;
     for (const c of this.cards) {
       if (px >= c.x && px <= c.x + c.w && py >= c.y && py <= c.y + c.h) {
         return c.cfg;
       }
     }
     return null;
+  }
+
+  /** Scroll the grid by `dy` px (positive = content moves up). Clamped. */
+  scrollBy(dy: number) {
+    this.scrollY = Math.max(0, Math.min(this.maxScroll, this.scrollY + dy));
+  }
+
+  /** Whether the grid actually overflows (so a drag should scroll, not select). */
+  get scrollable(): boolean {
+    return this.maxScroll > 0;
   }
 
   /** Whether (px,py) hits the music chip (caller advances the track). */
@@ -114,7 +136,7 @@ export class MenuScreen {
     // Music chip (top-right) — tap to cycle tracks / off.
     this.drawMusicChip(musicLabel, W, H, dark, accent);
 
-    // 2-column grid of cards.
+    // 2-column grid of fixed-height cards; scrolls when it overflows.
     const top = titleY + Math.min(64, H * 0.11);
     const sideX = W * 0.05;
     const colGap = W * 0.03;
@@ -122,17 +144,64 @@ export class MenuScreen {
     const cols = 2;
     const rows = Math.ceil(CHALLENGES.length / cols);
     const cardW = (W - sideX * 2 - colGap * (cols - 1)) / cols;
-    const availH = H - top - H * 0.03;
-    const cardH = Math.min(124, (availH - rowGap * (rows - 1)) / rows);
+    const cardH = CARD_H;
+    const bottomPad = H * 0.03;
+
+    // Scroll viewport spans from `top` to the bottom margin.
+    this.viewTop = top;
+    this.viewBottom = H - bottomPad;
+    const viewH = this.viewBottom - this.viewTop;
+    const contentH = rows * cardH + (rows - 1) * rowGap;
+    this.maxScroll = Math.max(0, contentH - viewH);
+    // Re-clamp in case the viewport grew (e.g. rotate/resize).
+    this.scrollY = Math.min(this.scrollY, this.maxScroll);
 
     this.cards = [];
-    CHALLENGES.forEach((cfg, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const x = sideX + col * (cardW + colGap);
-      const y = top + row * (cardH + rowGap);
-      this.cards.push({ x, y, w: cardW, h: cardH, cfg });
-      this.drawCard(cfg, x, y, cardW, cardH, dark, accent);
+    const drawGrid = () => {
+      CHALLENGES.forEach((cfg, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        const x = sideX + col * (cardW + colGap);
+        const y = top + row * (cardH + rowGap) - this.scrollY;
+        // record on-screen rect for hit-testing; cull rows fully off-viewport
+        this.cards.push({ x, y, w: cardW, h: cardH, cfg });
+        if (y + cardH < this.viewTop || y > this.viewBottom) return;
+        this.drawCard(cfg, x, y, cardW, cardH, dark, accent);
+      });
+    };
+
+    // Clip the grid to the viewport so scrolled cards don't bleed over the
+    // title or the bottom edge.
+    if (this.maxScroll > 0) {
+      k.drawMasked(drawGrid, () => {
+        k.drawRect({
+          pos: k.vec2(0, this.viewTop),
+          width: W,
+          height: viewH,
+        });
+      });
+      this.drawScrollHint(W, accent);
+    } else {
+      drawGrid();
+    }
+  }
+
+  /** A faint scrollbar track + thumb on the right edge of the viewport. */
+  private drawScrollHint(W: number, accent: ReturnType<KAPLAYCtx["rgb"]>) {
+    const k = this.k;
+    const viewH = this.viewBottom - this.viewTop;
+    const trackX = W - 5;
+    const frac = viewH / (viewH + this.maxScroll); // visible fraction
+    const thumbH = Math.max(28, viewH * frac);
+    const t = this.maxScroll > 0 ? this.scrollY / this.maxScroll : 0;
+    const thumbY = this.viewTop + t * (viewH - thumbH);
+    k.drawRect({
+      pos: k.vec2(trackX, thumbY),
+      width: 3,
+      height: thumbH,
+      radius: 1.5,
+      color: accent,
+      opacity: 0.5,
     });
   }
 

@@ -95,6 +95,11 @@ export class GameView {
   private particles: Particles;
   private effects: Effects;
   private music = new MusicPlayer();
+  // Sugar Crush finale toggle, persisted across sessions (default on).
+  private sugarCrushOn =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("kadow.sugarCrush") !== "off"
+      : true;
   // Idle hint: seconds since the last input while a move is possible. After
   // HINT_DELAY a legal swap is shown pulsing until the player acts.
   private idle = 0;
@@ -288,6 +293,7 @@ export class GameView {
   /** Begin a Challenge from the menu: fresh seeded board, switch to play mode. */
   startChallenge(cfg: ChallengeConfig) {
     this.game = new Game(this.newSeed(), cfg);
+    this.game.sugarCrushEnabled = this.sugarCrushOn;
     this.layout = computeLayout(this.k.width(), this.k.height(), cfg.rows, cfg.cols);
     this.selected = null;
     this.dragStart = null;
@@ -820,6 +826,15 @@ export class GameView {
           this.menuDrag = null;
           return;
         }
+        // Sugar Crush toggle chip (top-left)
+        if (this.menu.hitSugar(p.x, p.y)) {
+          playSound("swap");
+          this.sugarCrushOn = !this.sugarCrushOn;
+          if (typeof localStorage !== "undefined")
+            localStorage.setItem("kadow.sugarCrush", this.sugarCrushOn ? "on" : "off");
+          this.menuDrag = null;
+          return;
+        }
         // begin a press: it becomes a scroll-drag if the finger moves, else a
         // tap-to-select on release.
         this.menuDrag = { startY: p.y, lastY: p.y, moved: false };
@@ -921,7 +936,14 @@ export class GameView {
     this.busy = true;
     this.idle = 0;
     this.hint = null;
-    const { steps } = this.game.playMove(a, b);
+    const { steps, sugarCrush } = this.game.playMove(a, b);
+    if (sugarCrush) {
+      // banner over the board as the finale kicks off
+      const x = this.layout.originX + this.layout.boardW / 2;
+      const y = this.layout.originY + this.layout.boardH * 0.4;
+      this.effects.word("SUGAR CRUSH!", x, y, [240, 80, 150], 52);
+      playSound("win");
+    }
     await this.playSteps(steps);
     // reshuffle if the resulting board is deadlocked
     if (this.game.outcome() === "playing") {
@@ -1010,7 +1032,7 @@ export class GameView {
 
   draw() {
     if (this.mode === "menu") {
-      this.menu.draw(this.music.label);
+      this.menu.draw(this.music.label, this.sugarCrushOn);
       this.particles.draw();
       return;
     }

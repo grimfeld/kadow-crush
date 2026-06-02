@@ -814,6 +814,54 @@ export class Board {
     return all.slice(0, budget);
   }
 
+  /**
+   * Sugar Crush finale: spend `moves` leftover moves by turning that many random
+   * plain candies into Striped Specials, then detonate them all in one big
+   * chaining cascade. Returns the Steps. Used when the objective is met with
+   * moves to spare.
+   */
+  sugarCrush(moves: number, cleared: Colour[]): Step[] {
+    const steps: Step[] = [];
+    this.firing.clear();
+    // gather plain candies, shuffle, take up to `moves`
+    const plain: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell && cell.colour !== null && !cell.special && !this.immovable(cell))
+          plain.push({ row: r, col: c });
+      }
+    for (let i = plain.length - 1; i > 0; i--) {
+      const j = this.rng.int(i + 1);
+      [plain[i], plain[j]] = [plain[j], plain[i]];
+    }
+    const picks = plain.slice(0, Math.min(moves, plain.length));
+    // turn each into a striped (alternating row/col for a varied finale)
+    for (let i = 0; i < picks.length; i++) {
+      const p = picks[i];
+      const cell = this.grid[p.row][p.col]!;
+      const special: SpecialType = i % 2 === 0 ? "striped-row" : "striped-col";
+      cell.special = special;
+      steps.push({
+        kind: "special-create",
+        at: p,
+        id: cell.id,
+        colour: cell.colour,
+        special,
+      });
+    }
+    // detonate them all (chains naturally via blast)
+    for (const p of picks) {
+      const cell = this.grid[p.row]?.[p.col];
+      if (cell?.special && !this.firing.has(cell.id)) {
+        this.detonate(p, cell.special, {}, steps, cleared);
+      }
+    }
+    // settle the board so the finale ends full and stable
+    this.resolve(steps, { swapA: picks[0] ?? { row: 0, col: 0 }, swapB: picks[0] ?? { row: 0, col: 0 } }, cleared);
+    return steps;
+  }
+
   /** Convert all candies of a colour into a Special, then detonate each. */
   private convertColourAndFire(
     colour: Colour,

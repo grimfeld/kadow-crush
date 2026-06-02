@@ -27,6 +27,12 @@ export class Game {
   specialsMade = 0;
   /** Seconds elapsed since the level started (Beat-Clock objective). */
   elapsed = 0;
+  /**
+   * Sugar Crush finale: when the objective is met with moves to spare, spend the
+   * leftover moves on a striped-candy blowout. Toggled from the menu; defaults on.
+   * Not applicable to timed (no move budget) levels.
+   */
+  sugarCrushEnabled = true;
   private rng: Rng;
 
   constructor(seed: number, cfg: ChallengeConfig = DEFAULT_CHALLENGE) {
@@ -104,9 +110,14 @@ export class Game {
   }
 
   /** Play a Move. Returns the Steps to animate (empty if the swap was illegal). */
-  playMove(a: Pos, b: Pos): { steps: Step[]; consumedMove: boolean } {
-    if (this.outcome() !== "playing") return { steps: [], consumedMove: false };
+  playMove(
+    a: Pos,
+    b: Pos,
+  ): { steps: Step[]; consumedMove: boolean; sugarCrush: boolean } {
+    if (this.outcome() !== "playing")
+      return { steps: [], consumedMove: false, sugarCrush: false };
 
+    let sugarCrush = false;
     const { steps, consumedMove, cleared } = this.board.trySwap(a, b);
     if (consumedMove) {
       this.movesLeft--;
@@ -129,8 +140,35 @@ export class Game {
         const spread = this.board.spreadJelly();
         if (spread) steps.push(spread);
       }
+
+      // Sugar Crush: objective met with moves to spare → blow the rest on a
+      // striped-candy finale, then the level ends (movesLeft → 0).
+      if (
+        this.sugarCrushEnabled &&
+        !this.isTimed() &&
+        this.movesLeft > 0 &&
+        this.objectiveMet()
+      ) {
+        const finale = this.board.sugarCrush(this.movesLeft, cleared);
+        for (const s of finale)
+          if (s.kind === "special-create") this.specialsMade++;
+        this.score += this.scoreFromSteps(finale);
+        steps.push(...finale);
+        this.movesLeft = 0;
+        sugarCrush = finale.length > 0;
+      }
     }
-    return { steps, consumedMove };
+    return { steps, consumedMove, sugarCrush };
+  }
+
+  /** Points from the clears in a batch of Steps (Sugar Crush finale scoring). */
+  private scoreFromSteps(steps: Step[]): number {
+    let cells = 0;
+    for (const s of steps) {
+      if (s.kind === "clear") cells += s.cells.length;
+      else if (s.kind === "special-activate") cells += s.cleared.length;
+    }
+    return cells * POINTS_PER_CLEAR;
   }
 
   /** Reshuffle if the board has no legal move. Returns the Step, or null. */

@@ -73,6 +73,9 @@ export class GameView {
   // Burger parts collected so far, mirrored for the HUD (driven by collect
   // steps; resynced to the board at rest points).
   private viewBurger = new Set<number>();
+  // Total burger parts collected so far (Avalanche needs a running count, not a
+  // distinct-kind set, since many parts of the same kind rain in).
+  private viewCollected = 0;
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
@@ -137,6 +140,7 @@ export class GameView {
     );
     this.viewJelly = this.game.board.jelly.map((row) => row.slice());
     this.viewBurger = new Set(this.game.board.collectedIngredientKinds);
+    this.viewCollected = this.game.board.ingredientsCollected;
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -316,6 +320,33 @@ export class GameView {
         );
         break;
       }
+      case "ingredient-spawn": {
+        // Avalanche: burger parts rain in from the top, same drop as candies
+        for (const sp of step.spawns) {
+          const { x } = cellCenter(this.layout, sp.at.row, sp.at.col);
+          const startY =
+            this.layout.originY - this.layout.cell * (this.rows - sp.at.row);
+          this.sprites.set(sp.id, {
+            id: sp.id,
+            colour: null,
+            special: null,
+            ingredient: true,
+            ingredientKind: sp.kind,
+            blocker: false,
+            frozen: false,
+            box: false,
+            boxHits: 0,
+            x,
+            y: startY,
+            scale: 1,
+          });
+          this.setAt(sp.at, sp.id);
+        }
+        await Promise.all(
+          step.spawns.map((sp) => this.moveSprite(sp.id, sp.at, FALL_MS)),
+        );
+        break;
+      }
       case "jelly-clear": {
         // sync the view's jelly mirror to the levels the core reported
         step.cells.forEach((p, i) => {
@@ -336,6 +367,7 @@ export class GameView {
         // a burger part reached the bottom — slide it off the board edge
         playSound("special");
         for (const kind of step.kinds) this.viewBurger.add(kind);
+        this.viewCollected += step.kinds.length;
         await this.dropOutIds(step.cells, step.ids);
         break;
       }
@@ -773,6 +805,27 @@ export class GameView {
     const spec = this.game.cfg.objective;
     if (spec.kind === "collect-ingredients") {
       const count = spec.count;
+      // Avalanche collects many same-kind parts, so once the goal exceeds the
+      // distinct-part row we show a running count instead of a parts row.
+      if (count > BURGER_PARTS.length) {
+        const done = this.viewCollected >= count;
+        k.drawText({
+          text: "Parts collected",
+          pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+          size: panelH * 0.22,
+          color: dark,
+          anchor: "center",
+        });
+        this.fitText(
+          `${Math.min(this.viewCollected, count)} / ${count}`,
+          goalX + goalW / 2,
+          panelY + panelH * 0.68,
+          goalW * 0.9,
+          panelH * 0.38,
+          done ? accent : accent,
+        );
+        return;
+      }
       const done = this.viewBurger.size >= count;
       this.fitText(
         done ? "Burger complete!" : "Build the burger",

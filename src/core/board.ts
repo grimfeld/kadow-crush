@@ -19,6 +19,10 @@ import type {
 
 type Grid = (Candy | null)[][];
 
+// Number of distinct burger-part kinds (matches the view's BURGER_PARTS table).
+// Avalanche cycles ingredient kinds through this so the parts vary as they rain.
+const BURGER_PARTS_COUNT = 5;
+
 const samePos = (a: Pos, b: Pos) => a.row === b.row && a.col === b.col;
 const adjacent = (a: Pos, b: Pos) =>
   Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
@@ -47,6 +51,9 @@ export class Board {
   private readonly frozenCount: number;
   private readonly boxCount: number;
   private readonly boxHits: number;
+  private readonly avalancheRate: number;
+  /** Rotating burger-part kind for Avalanche-spawned ingredients. */
+  private avalancheKind = 0;
   private nextId = 1;
 
   constructor(
@@ -61,6 +68,7 @@ export class Board {
     this.frozenCount = cfg.frozen ?? 0;
     this.boxCount = cfg.boxes ?? 0;
     this.boxHits = cfg.boxHits ?? 2;
+    this.avalancheRate = cfg.avalanche ?? 0;
     this.grid = this.generateSolvableGrid();
     this.jelly = this.buildJelly(cfg.jelly);
     this.jellySpreads = cfg.jelly?.spread ?? false;
@@ -812,18 +820,46 @@ export class Board {
    */
   private spawnNew(steps: Step[]) {
     const spawns: { id: number; colour: Colour; at: Pos }[] = [];
+    const ingSpawns: { id: number; kind: number; at: Pos }[] = [];
+    // Avalanche cap: never let more than a few ingredients ride the board at
+    // once, so the player can always keep up and the board never floods.
+    let ingredientBudget =
+      this.avalancheRate > 0
+        ? Math.max(0, 3 - this.countIngredientsOnBoard())
+        : 0;
     for (let c = 0; c < this.cols; c++) {
+      let topMost = true; // first fill in this column = the entry cell at the top
       for (let r = 0; r < this.rows; r++) {
         const cell = this.grid[r][c];
         if (this.isWall(cell)) break; // sealed below here
         if (cell !== null) continue;
+        // Avalanche: the entry cell of a column may rain an Ingredient instead.
+        if (topMost && ingredientBudget > 0 && this.rng.chance(this.avalancheRate)) {
+          ingredientBudget--;
+          const kind = this.avalancheKind++ % BURGER_PARTS_COUNT;
+          const candy = this.newIngredient(kind);
+          this.grid[r][c] = candy;
+          ingSpawns.push({ id: candy.id, kind, at: { row: r, col: c } });
+          topMost = false;
+          continue;
+        }
         const colour = this.rng.int(this.colourCount);
         const candy = this.newCandy(colour);
         this.grid[r][c] = candy;
         spawns.push({ id: candy.id, colour, at: { row: r, col: c } });
+        topMost = false;
       }
     }
     if (spawns.length) steps.push({ kind: "spawn", spawns });
+    if (ingSpawns.length) steps.push({ kind: "ingredient-spawn", spawns: ingSpawns });
+  }
+
+  /** How many Ingredients are currently somewhere on the board. */
+  private countIngredientsOnBoard(): number {
+    let n = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) if (this.grid[r][c]?.ingredient) n++;
+    return n;
   }
 
   // ---- reshuffle ----------------------------------------------------------

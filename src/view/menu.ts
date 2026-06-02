@@ -44,7 +44,9 @@ export function objectiveSummary(cfg: ChallengeConfig): string {
     case "clear-jelly":
       return "Clear all the jelly";
     case "collect-ingredients":
-      return `Build a ${o.count}-part burger`;
+      return o.count > 5
+        ? `Catch ${o.count} burger parts`
+        : `Build a ${o.count}-part burger`;
     case "make-specials":
       return `Make ${o.count} special candies`;
     case "beat-clock":

@@ -65,6 +65,8 @@ export type Step =
   | { kind: "special-activate"; origin: Pos; cleared: Pos[]; ids: number[] }
   | { kind: "fall"; moves: { id: number; from: Pos; to: Pos }[] }
   | { kind: "spawn"; spawns: { id: number; colour: Colour; at: Pos }[] }
+  // Avalanche: Ingredients (burger parts) raining in from the top during play.
+  | { kind: "ingredient-spawn"; spawns: { id: number; kind: number; at: Pos }[] }
   // A clear reduced the Jelly layer on these cells (parallel `level` = remaining).
   | { kind: "jelly-clear"; cells: Pos[]; levels: number[] }
   // Frosting Drip: jelly crept onto these new cells (parallel `levels` = new).

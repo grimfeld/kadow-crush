@@ -76,6 +76,13 @@ export interface ChallengeConfig {
   boxes?: number;
   /** Adjacent Matches needed to crack each Gift Box (default 2). */
   boxHits?: number;
+  /**
+   * Avalanche: ingredients rain in from the top during play. When set, each
+   * refill has roughly this chance (0..1) per column-top to spawn a falling
+   * Ingredient instead of a candy, capped so the board never floods. Win is a
+   * collect-ingredients objective whose `count` exceeds any placed at start.
+   */
+  avalanche?: number;
 }
 
 /** The default Challenge — the gentle introduction. */
@@ -298,6 +305,25 @@ export const CHALLENGES: ChallengeConfig[] = [
       "Swap as fast as you like — there's no move limit.",
       "Every candy you pop adds to your score.",
       "Win: reach the points shown before time runs out.",
+    ],
+  },
+  {
+    id: "avalanche",
+    name: "Avalanche",
+    blurb: "Burger parts keep raining down — catch six at the bottom.",
+    difficulty: "Easy",
+    rows: 8,
+    cols: 7,
+    colourCount: 5,
+    moves: 34,
+    objective: { kind: "collect-ingredients", count: 6 },
+    avalanche: 0.14,
+    tutorial: [
+      "Burger parts 🍔 rain in from the top as you play.",
+      "Pop the candies beneath a part to drop it to the floor.",
+      "Every part that reaches the bottom is caught.",
+      "More keep falling — just keep clearing space below them.",
+      "Win: catch 6 parts before your moves run out.",
     ],
   },
   {

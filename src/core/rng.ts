@@ -8,6 +8,8 @@ export interface Rng {
   int(n: number): number;
   /** Pick a random element. */
   pick<T>(arr: readonly T[]): T;
+  /** True with probability p (p<=0 ⇒ never, p>=1 ⇒ always). */
+  chance(p: number): boolean;
 }
 
 export function makeRng(seed: number): Rng {
@@ -23,6 +25,7 @@ export function makeRng(seed: number): Rng {
     next,
     int: (n: number) => Math.floor(next() * n),
     pick: <T>(arr: readonly T[]): T => arr[Math.floor(next() * arr.length)],
+    chance: (p: number) => next() < p,
   };
 }
 

@@ -4,7 +4,8 @@
 
 Accepted — supersedes the single-level assumption baked into ADR-0001's prose,
 not its architecture. All four objective types, blockers, board-param variation,
-and the menu are implemented (six challenges shipped).
+and the menu are implemented. The roster and mechanic set are extended in
+ADR-0003 (ten Easy challenges; six further mechanics).
 
 ## Context
 
@@ -48,9 +49,10 @@ original tests keep working during the migration.
 ### 2. Objectives are a typed union
 
 `ObjectiveSpec` is a discriminated union — `collect-colours | score |
-clear-jelly | collect-ingredients`. `Game.outcome()` branches on the kind. Each
-kind owns its own progress state (colour tallies, score, jelly-remaining,
-ingredients-collected).
+clear-jelly | collect-ingredients` (extended in ADR-0003 with `make-specials`
+and `beat-clock`). `Game.outcome()` branches on the kind. Each kind owns its own
+progress state (colour tallies, score, jelly-remaining, ingredients-collected,
+specials-made, elapsed-time).
 
 ### 3. New mechanics extend the core + the `Step` contract
 

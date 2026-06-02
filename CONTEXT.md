@@ -78,16 +78,30 @@ The Objective generalises beyond colour-collection. Each Challenge has exactly o
 - **Collect Colours** — clear a quota of each of N random Target Colours (the original goal). Any clear counts.
 - **Score** — reach a points target within the move budget. Clears earn points; cascades and Specials earn more.
 - **Clear Jelly** — remove all Jelly from the Board.
-- **Build a Burger** (Collect Ingredients) — bring each distinct Ingredient (burger part) off the bottom of the Board; collecting them all completes the burger and wins.
+- **Build a Burger** (Collect Ingredients) — bring each distinct Ingredient (burger part) off the bottom of the Board; collecting them all completes the burger and wins. When the target count exceeds the burger-part set, the goal reads as *catch N parts* (see Avalanche) and the HUD shows a running tally.
+- **Make Specials** — create a number of Special Candies (striped / colour bomb) within the move budget. Each Special created counts once.
+- **Beat the Clock** — reach a Score target within a real-seconds time limit; the move budget does not apply. The Game accrues elapsed time from the view's per-frame tick, and the HUD shows a countdown in place of Moves.
 
 ### Score
 A running point total for a Challenge whose Objective is Score. Points accrue as Candies clear.
 
 ### Jelly
-A coating on a Cell, independent of the Candy on it. A Match (or Special clear) over a Jellied Cell removes one layer of Jelly. The Clear-Jelly Objective is met when no Jelly remains. A Challenge places Jelly in a pattern — every cell, a checkerboard, or a centred block — which tunes the difficulty.
+A coating on a Cell, independent of the Candy on it. A Match (or Special clear) over a Jellied Cell removes one layer of Jelly. The Clear-Jelly Objective is met when no Jelly remains. A Challenge places Jelly in a pattern — every cell, a checkerboard, or a centred block — which tunes the difficulty. A Challenge may also make Jelly **spread** (see Frosting Drip).
+
+### Frosting Drip (spreading Jelly)
+A Jelly variant that creeps. On any Move that clears no Jelly, one un-Jellied Cell bordering existing Jelly gains a layer, until a coverage cap (~45% of the Board) is reached. Clearing some Jelly each turn holds the spread back, keeping the Challenge winnable.
 
 ### Ingredient (Burger Part)
 A special non-matching piece that occupies a Cell and falls with gravity like a Candy but never forms a Match. Each Ingredient is a distinct **burger part**, placed once. It is **collected** when gravity carries it past the bottom row (it reaches the bottom and drops out, with its own off-the-board animation). Collecting every part completes the burger and meets the Objective.
 
+### Avalanche (raining Ingredients)
+A Collect-Ingredients variant where Ingredients are not all placed at start but **rain in** from the top during play — a column's entry Cell may spawn one on refill, capped at a few on the Board at once so it never floods. The win count exceeds the burger-part set, so the goal is to *catch* a number of parts rather than assemble one of each.
+
 ### Blocker
 An immovable Cell occupant. It never Matches and blocks gravity (Candies do not fall through it). It is cleared when an adjacent Match touches it. Blockers shape the Board and obstruct other goals.
+
+### Frozen Candy (Color Lock)
+A Candy encased in frost. It keeps a real Colour but never Matches and cannot be swapped while frozen; it still falls with gravity. A Match in an orthogonally-adjacent Cell **thaws** it into an ordinary Candy.
+
+### Gift Box
+An immovable crate seated on the bottom row that blocks gravity like a Blocker. Each Match in an adjacent Cell knocks one off its hit counter (shown as pips); at zero the crate **cracks open** into a falling Ingredient (a burger part), then collected at the bottom like any Ingredient.

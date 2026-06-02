@@ -526,9 +526,13 @@ export class Board {
     for (const p of cells) {
       const candy = this.grid[p.row][p.col];
       if (!candy) continue;
-      // Ingredients are immune to clears/Specials — they only leave at the
-      // bottom. A Special blast simply passes over them.
-      if (candy.ingredient) continue;
+      // Ingredients, Blockers, Frozen candies and Gift Boxes are immune to a
+      // direct clear/Special blast — a blast passes over them. They are only
+      // removed/changed by their own adjacency rules (collect at the bottom;
+      // adjacent-Match clears a Blocker, thaws Frost, or knocks a Box). Without
+      // this guard a striped/bomb blast would silently delete a Box instead of
+      // cracking it open.
+      if (candy.ingredient || candy.blocker || candy.frozen || candy.box) continue;
       if (candy.colour !== null) cleared.push(candy.colour);
       outCells.push(p);
       ids.push(candy.id);

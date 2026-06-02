@@ -92,4 +92,42 @@ describe("Gift Box challenge", () => {
     }
     expect(collectedAfterOpen).toBe(true);
   });
+
+  it("a Special blast never destroys a box — it knocks it instead", () => {
+    // Regression: a striped/bomb blast used to null out a box cell silently.
+    // Build a board with a striped-row candy next to a box on the bottom row,
+    // fire the striped by swapping it up, and confirm the box still exists
+    // (knocked or cracked-open into an ingredient) rather than vanishing.
+    const board = new Board(makeRng(5), boxChallenge);
+    const r = board.rows - 1;
+    const box = findBoxes(board)[0];
+    const boxId = board.grid[box.row][box.col]!.id;
+    // put a striped-row candy two cells away on the same row, with a plain candy
+    // between, so swapping the striped upward fires it across the whole row.
+    const sc = box.col >= 2 ? box.col - 2 : box.col + 2;
+    board.grid[r][sc] = {
+      id: 9001,
+      colour: 0,
+      special: "striped-row",
+    };
+    // a swap partner directly above the striped candy (must exist & be ordinary)
+    const partner = { row: r - 1, col: sc };
+    board.grid[partner.row][partner.col] = { id: 9002, colour: 1, special: null };
+
+    const res = board.trySwap({ row: r, col: sc }, partner);
+    // the striped fired (special-activate emitted)
+    expect(res.steps.some((s) => s.kind === "special-activate")).toBe(true);
+
+    // the box must still be tracked somewhere: either still a box, or it cracked
+    // open into an ingredient (possibly already collected) — never gone for free.
+    let stillThere = false;
+    for (const row of board.grid)
+      for (const cell of row)
+        if (cell?.id === boxId && (cell.box || cell.ingredient)) stillThere = true;
+    const openedThisMove = res.steps.some(
+      (s) => s.kind === "box-open" && s.ids.includes(boxId),
+    );
+    const collected = board.collectedIngredientKinds.length > 0;
+    expect(stillThere || openedThisMove || collected).toBe(true);
+  });
 });

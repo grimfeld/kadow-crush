@@ -51,6 +51,7 @@ const DROP_OUT_MS = 420; // ingredient slides off the bottom of the board
 // Beats inserted between cascade phases so each clear is legible.
 const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
+const END_OVERLAY_DELAY = 0.9; // seconds to watch the final board before the modal
 
 export class GameView {
   private mode: "menu" | "tutorial" | "play" = "menu";
@@ -81,6 +82,10 @@ export class GameView {
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
   private particles: Particles;
   private prevOutcome: "playing" | "won" | "lost" = "playing";
+  // Seconds to linger on the final board before the end overlay appears, so the
+  // last clears/falls are visible. Counts down from END_OVERLAY_DELAY once the
+  // outcome is decided.
+  private endHold = 0;
 
   constructor(private k: KAPLAYCtx) {
     this.menu = new MenuScreen(k);
@@ -110,6 +115,7 @@ export class GameView {
     this.selected = null;
     this.dragStart = null;
     this.prevOutcome = "playing";
+    this.endHold = 0;
     this.sprites.clear();
     this.rebuildFromBoard();
     this.mode = "play";
@@ -591,6 +597,8 @@ export class GameView {
 
   private handleOverlayClick() {
     if (this.game.outcome() === "playing") return;
+    // ignore taps during the linger — the overlay isn't up yet
+    if (this.busy || this.endHold > 0) return;
     // any click on the end overlay returns to the level-select menu
     this.returnToMenu();
   }
@@ -609,10 +617,25 @@ export class GameView {
 
   // ---- frame --------------------------------------------------------------
 
-  /** Per-frame update: advance the level clock for timed challenges. */
+  /** Per-frame update: advance the level clock for timed challenges, and run
+   *  the end-of-level lingering countdown before the overlay appears. */
   tick(dtSeconds: number) {
     if (this.mode !== "play") return;
     this.game.tick(dtSeconds);
+    // Once the outcome is decided and the last Resolution has finished
+    // animating, hold on the final board for a beat before the modal. Start the
+    // countdown only when not busy so the closing clears/falls play out first.
+    if (this.game.outcome() !== "playing" && !this.busy) {
+      if (this.prevOutcome === "playing") {
+        // first frame the result is visible at rest — begin the linger
+        this.endHold = END_OVERLAY_DELAY;
+        if (this.game.outcome() === "won") playSound("win");
+        else playSound("lose");
+        this.prevOutcome = this.game.outcome();
+      } else if (this.endHold > 0) {
+        this.endHold = Math.max(0, this.endHold - dtSeconds);
+      }
+    }
   }
 
   onResize() {
@@ -731,14 +754,11 @@ export class GameView {
 
     this.drawHud();
 
+    // The end overlay appears only after the linger (tick handles the sting and
+    // the countdown), so the final board moves stay visible for a beat.
     const outcome = this.game.outcome();
-    // play a one-shot sting on the transition into a finished state
-    if (outcome !== this.prevOutcome) {
-      if (outcome === "won") playSound("win");
-      else if (outcome === "lost") playSound("lose");
-      this.prevOutcome = outcome;
-    }
-    if (outcome !== "playing") this.drawOverlay(outcome === "won");
+    if (outcome !== "playing" && !this.busy && this.endHold <= 0)
+      this.drawOverlay(outcome === "won");
   }
 
   /** A soft rounded HUD panel (legacy style). */

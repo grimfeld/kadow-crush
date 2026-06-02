@@ -899,34 +899,27 @@ export class Board {
         movesLeft: picks.length - 1 - i,
       });
     }
-    // detonate them all (chains naturally via blast)
-    for (const p of picks) {
-      const cell = this.grid[p.row]?.[p.col];
-      if (cell?.special && !this.firing.has(cell.id)) {
-        this.detonate(p, cell.special, {}, steps, cleared);
-      }
-    }
-    // settle the board so the finale ends full and stable
+    // Detonate ONE Special at a time, settling the board (fall + spawn) after
+    // each before firing the next — so each blast visibly resolves and tiles
+    // drop in before the next goes off. A blast that covers other Specials still
+    // chains them within that one detonation; the loop also mops up any Specials
+    // the cascade itself created, so the finale ends with zero Specials.
     const at = picks[0] ?? { row: 0, col: 0 };
-    this.resolve(steps, { swapA: at, swapB: at }, cleared);
-    // Sweep: the cascade may have CREATED new Specials — detonate every Special
-    // left on the board and re-settle, repeating until none remain, so the
-    // finale ends with zero Specials.
-    for (let guard = 0; guard < 12; guard++) {
-      const live: { pos: Pos; special: SpecialType }[] = [];
-      for (let r = 0; r < this.rows; r++)
+    for (let guard = 0; guard < 400; guard++) {
+      // find the next live Special (scan order = deterministic)
+      let next: { pos: Pos; special: SpecialType } | null = null;
+      for (let r = 0; r < this.rows && !next; r++)
         for (let c = 0; c < this.cols; c++) {
           const cell = this.grid[r][c];
-          if (cell?.special) live.push({ pos: { row: r, col: c }, special: cell.special });
+          if (cell?.special) {
+            next = { pos: { row: r, col: c }, special: cell.special };
+            break;
+          }
         }
-      if (live.length === 0) break;
+      if (!next) break;
       this.firing.clear();
-      for (const s of live) {
-        const cell = this.grid[s.pos.row]?.[s.pos.col];
-        if (cell?.special && !this.firing.has(cell.id)) {
-          this.detonate(s.pos, cell.special, {}, steps, cleared);
-        }
-      }
+      this.detonate(next.pos, next.special, {}, steps, cleared);
+      // settle this blast's holes before the next Special fires
       this.resolve(steps, { swapA: at, swapB: at }, cleared);
     }
     return steps;

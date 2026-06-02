@@ -431,11 +431,11 @@ export class GameView {
       // Pace the cascade: pause after a clear so the gap is visible, and after
       // a spawn (end of one cascade round) before the next round begins.
       if (step.kind === "clear" || step.kind === "special-activate")
-        await this.wait(fast ? AFTER_CLEAR_MS * 0.3 : AFTER_CLEAR_MS);
+        await this.wait(fast ? AFTER_CLEAR_MS * 0.5 : AFTER_CLEAR_MS);
       else if (step.kind === "spawn") {
         this.cascadeDepth++;
         if (!fast && this.cascadeDepth >= 2) this.praiseCascade(this.cascadeDepth);
-        await this.wait(fast ? AFTER_ROUND_MS * 0.3 : AFTER_ROUND_MS);
+        await this.wait(fast ? AFTER_ROUND_MS * 0.5 : AFTER_ROUND_MS);
       }
     }
     // Final correction: align sprites to the view's own grid. By now viewGrid

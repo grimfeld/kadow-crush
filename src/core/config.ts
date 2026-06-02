@@ -20,6 +20,11 @@ export interface ChallengeConfig {
   /** Moves granted for the level. */
   moves: number;
   objective: ObjectiveSpec;
+  /**
+   * Jelly layers placed on every cell at start (Clear-Jelly challenges).
+   * Omitted/0 = no jelly. A clear over a jellied cell removes one layer.
+   */
+  jelly?: number;
 }
 
 /** The default Challenge — reproduces the original single level exactly. */
@@ -50,6 +55,17 @@ export const CHALLENGES: ChallengeConfig[] = [
     colourCount: 6,
     moves: 15,
     objective: { kind: "score", target: 6000 },
+  },
+  {
+    id: "jelly-jam",
+    name: "Jelly Jam",
+    blurb: "Every tile is coated — clear all the jelly.",
+    rows: 7,
+    cols: 7,
+    colourCount: 5,
+    moves: 28,
+    objective: { kind: "clear-jelly" },
+    jelly: 1,
   },
 ];
 

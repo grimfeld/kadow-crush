@@ -66,9 +66,9 @@ export class Game {
         );
       case "score":
         return this.score >= spec.target;
-      // Mechanic-backed objectives land in later phases; not yet reachable from
-      // the menu, so they cannot be met yet.
       case "clear-jelly":
+        return this.board.jellyRemaining() === 0;
+      // Lands in a later phase; not yet reachable from the menu.
       case "collect-ingredients":
         return false;
     }

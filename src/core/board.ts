@@ -27,6 +27,8 @@ interface Run {
 
 export class Board {
   grid: Grid;
+  /** Remaining Jelly layers per cell (0 = no jelly). Parallel to `grid`. */
+  jelly: number[][];
   readonly rows: number;
   readonly cols: number;
   readonly colourCount: number;
@@ -40,6 +42,18 @@ export class Board {
     this.cols = cfg.cols;
     this.colourCount = cfg.colourCount;
     this.grid = this.generateSolvableGrid();
+    const layers = cfg.jelly ?? 0;
+    this.jelly = Array.from({ length: this.rows }, () =>
+      Array<number>(this.cols).fill(layers),
+    );
+  }
+
+  /** Total Jelly layers left on the board (0 ⇒ Clear-Jelly objective met). */
+  jellyRemaining(): number {
+    let total = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) total += this.jelly[r][c];
+    return total;
   }
 
   private inBounds(row: number, col: number): boolean {
@@ -236,8 +250,9 @@ export class Board {
       const candy = this.grid[origin.row][origin.col];
       if (!candy?.special) return;
       const targetCells = this.specialCells(origin, candy.special, partner);
-      const { cells, ids } = this.clearCells(targetCells, cleared);
+      const { cells, ids, jelly } = this.clearCells(targetCells, cleared);
       steps.push({ kind: "special-activate", origin, cleared: cells, ids });
+      this.pushJelly(steps, jelly);
     };
     // Snapshot which positions hold specials before clearing.
     const aSpecial = ca?.special != null;
@@ -276,9 +291,15 @@ export class Board {
   private clearCells(
     cells: Pos[],
     cleared: Colour[],
-  ): { cells: Pos[]; ids: number[] } {
+  ): {
+    cells: Pos[];
+    ids: number[];
+    jelly: { cells: Pos[]; levels: number[] };
+  } {
     const outCells: Pos[] = [];
     const ids: number[] = [];
+    const jellyCells: Pos[] = [];
+    const jellyLevels: number[] = [];
     for (const p of cells) {
       const candy = this.grid[p.row][p.col];
       if (!candy) continue;
@@ -286,8 +307,20 @@ export class Board {
       outCells.push(p);
       ids.push(candy.id);
       this.grid[p.row][p.col] = null;
+      // A clear over a jellied cell removes one layer.
+      if (this.jelly[p.row][p.col] > 0) {
+        this.jelly[p.row][p.col]--;
+        jellyCells.push(p);
+        jellyLevels.push(this.jelly[p.row][p.col]);
+      }
     }
-    return { cells: outCells, ids };
+    return { cells: outCells, ids, jelly: { cells: jellyCells, levels: jellyLevels } };
+  }
+
+  /** Emit a jelly-clear Step for any layers removed by the last clear. */
+  private pushJelly(steps: Step[], jelly: { cells: Pos[]; levels: number[] }) {
+    if (jelly.cells.length)
+      steps.push({ kind: "jelly-clear", cells: jelly.cells, levels: jelly.levels });
   }
 
   /** Resolve cascades until the board is stable. Appends Steps. */
@@ -314,6 +347,7 @@ export class Board {
           ids: cleared2.ids,
           bySpecial: false,
         });
+        this.pushJelly(steps, cleared2.jelly);
 
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {

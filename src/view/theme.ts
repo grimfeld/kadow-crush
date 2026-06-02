@@ -44,6 +44,10 @@ export const GRID_PANEL_BORDER: [number, number, number] = [120, 180, 215];
 // Empty cell slot inside the panel.
 export const CELL_BG: [number, number, number] = [225, 238, 247];
 
+// Jelly coating drawn over a cell (Clear-Jelly challenges). Translucent so the
+// candy on top still reads; a second layer reads darker.
+export const JELLY_FILL: [number, number, number] = [120, 200, 245];
+
 // Special-tile base (when a candy becomes a Special its tile keeps the colour
 // tint but a bomb gets a neutral dark base for contrast).
 export const BOMB_FILL: [number, number, number] = [70, 70, 90];

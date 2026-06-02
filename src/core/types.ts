@@ -35,6 +35,8 @@ export type Step =
   | { kind: "special-activate"; origin: Pos; cleared: Pos[]; ids: number[] }
   | { kind: "fall"; moves: { id: number; from: Pos; to: Pos }[] }
   | { kind: "spawn"; spawns: { id: number; colour: Colour; at: Pos }[] }
+  // A clear reduced the Jelly layer on these cells (parallel `level` = remaining).
+  | { kind: "jelly-clear"; cells: Pos[]; levels: number[] }
   | { kind: "reshuffle"; layout: (Candy | null)[][] };
 
 export interface Objective {

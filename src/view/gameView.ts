@@ -16,6 +16,7 @@ import {
   COLOUR_THEMES,
   GRID_PANEL,
   GRID_PANEL_BORDER,
+  JELLY_FILL,
   PANEL_BORDER,
   PANEL_FILL,
   TEXT_ACCENT,
@@ -51,6 +52,10 @@ export class GameView {
   // already the final state mid-animation — reading it caused tiles to vanish
   // and reappear).
   private viewGrid: (number | null)[][] = [];
+  // The view's own mirror of the jelly layer, driven by jelly-clear steps (the
+  // board's own jelly is already at its final state mid-resolution — same rule
+  // as viewGrid vs board.grid).
+  private viewJelly: number[][] = [];
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
@@ -112,6 +117,7 @@ export class GameView {
     this.viewGrid = Array.from({ length: this.rows }, () =>
       Array<number | null>(this.cols).fill(null),
     );
+    this.viewJelly = this.game.board.jelly.map((row) => row.slice());
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -277,6 +283,13 @@ export class GameView {
         await Promise.all(
           step.spawns.map((sp) => this.moveSprite(sp.id, sp.at, FALL_MS)),
         );
+        break;
+      }
+      case "jelly-clear": {
+        // sync the view's jelly mirror to the levels the core reported
+        step.cells.forEach((p, i) => {
+          this.viewJelly[p.row][p.col] = step.levels[i];
+        });
         break;
       }
       case "reshuffle": {
@@ -481,11 +494,24 @@ export class GameView {
       },
     });
 
-    // cell backgrounds
+    // cell backgrounds + jelly coating
+    const cell = this.layout.cell;
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         const { x, y } = cellCenter(this.layout, r, c);
-        drawCellBg(k, x, y, this.layout.cell);
+        drawCellBg(k, x, y, cell);
+        const layers = this.viewJelly[r]?.[c] ?? 0;
+        if (layers > 0) {
+          // each layer reads a little stronger
+          k.drawRect({
+            pos: k.vec2(x - cell / 2 + 2, y - cell / 2 + 2),
+            width: cell - 4,
+            height: cell - 4,
+            radius: cell * 0.2,
+            color: k.rgb(JELLY_FILL[0], JELLY_FILL[1], JELLY_FILL[2]),
+            opacity: Math.min(0.6, 0.32 + 0.22 * (layers - 1)),
+          });
+        }
       }
 
     // selection highlight
@@ -574,6 +600,25 @@ export class GameView {
     this.panel(goalX, panelY, goalW, panelH);
 
     const spec = this.game.cfg.objective;
+    if (spec.kind === "clear-jelly") {
+      let left = 0;
+      for (const row of this.viewJelly) for (const v of row) left += v;
+      k.drawText({
+        text: "Jelly left",
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
+        size: panelH * 0.24,
+        color: dark,
+        anchor: "center",
+      });
+      k.drawText({
+        text: `${left}`,
+        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.68),
+        size: panelH * 0.38,
+        color: accent,
+        anchor: "center",
+      });
+      return;
+    }
     if (spec.kind === "score") {
       k.drawText({
         text: "Score",

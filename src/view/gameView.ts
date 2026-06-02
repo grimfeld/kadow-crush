@@ -571,6 +571,29 @@ export class GameView {
         this.rebuildFromBoard();
         break;
       }
+      case "fish-fly": {
+        // a fish darts to its target before the pop that follows
+        playSound("special");
+        const s = this.sprites.get(step.id);
+        if (s) {
+          const { x, y } = cellCenter(this.layout, step.to.row, step.to.col);
+          await this.tween((t) => {
+            s.x = s.x + (x - s.x) * t * 0.5;
+            s.y = s.y + (y - s.y) * t * 0.5;
+          }, 180);
+        }
+        break;
+      }
+      case "recolor": {
+        // coloring candy converted these cells to a new colour (no clear)
+        playSound("special");
+        for (const id of step.ids) {
+          const s = this.sprites.get(id);
+          if (s) s.colour = step.colour;
+        }
+        await this.wait(AFTER_CLEAR_MS);
+        break;
+      }
     }
   }
 

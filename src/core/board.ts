@@ -55,6 +55,8 @@ export class Board {
   /** Rotating burger-part kind for Avalanche-spawned ingredients. */
   private avalancheKind = 0;
   private nextId = 1;
+  /** Candy ids already detonating this Move, so chains never double-fire. */
+  private firing = new Set<number>();
 
   constructor(
     private rng: Rng,
@@ -313,8 +315,10 @@ export class Board {
 
   private colourAt(grid: Grid, r: number, c: number): Colour | null {
     const cell = grid[r][c];
-    // A Color Bomb never participates in a colour Match; a Frozen candy is inert
-    // until thawed.
+    // A Color Bomb has no colour and never matches; a Frozen candy is inert
+    // until thawed. Other Specials keep their colour and CAN be lined up in a
+    // Match (which clears/chains them) — this is also the escape valve that
+    // keeps boards from clogging with un-fireable Specials.
     if (!cell || cell.special === "color-bomb" || cell.frozen) return null;
     return cell.colour;
   }
@@ -490,50 +494,393 @@ export class Board {
     return { steps, consumedMove: true, cleared };
   }
 
-  /** Fire Specials that were directly swapped (Color Bomb / Striped). */
+  // ---- Special activation, chaining, and combos ---------------------------
+
+  /**
+   * Fire the Special(s) directly swapped. If BOTH swapped candies are Specials
+   * it's a Combo (combined, bigger effect); otherwise each fires on its own.
+   * All detonations chain: any Special caught in a blast detonates too.
+   */
   private activateSwappedSpecials(steps: Step[], a: Pos, b: Pos, cleared: Colour[]) {
+    this.firing.clear();
     const ca = this.grid[a.row][a.col];
     const cb = this.grid[b.row][b.col];
-    // Determine targets for any color-bomb based on its swap partner.
-    const fireAt = (origin: Pos, partner: Pos) => {
-      const candy = this.grid[origin.row][origin.col];
-      if (!candy?.special) return;
-      const targetCells = this.specialCells(origin, candy.special, partner);
-      const { cells, ids, jelly } = this.clearCells(targetCells, cleared);
-      steps.push({ kind: "special-activate", origin, cleared: cells, ids });
-      this.pushJelly(steps, jelly);
-      this.clearAdjacentBlockers(cells, steps);
-      this.thawAdjacentFrozen(cells, steps);
-      this.hitAdjacentBoxes(cells, steps);
-    };
-    // Snapshot which positions hold specials before clearing.
-    const aSpecial = ca?.special != null;
-    const bSpecial = cb?.special != null;
-    if (aSpecial) fireAt(a, b);
-    if (bSpecial && this.grid[b.row][b.col]?.special) fireAt(b, a);
+    const aSpecial = ca?.special ?? null;
+    const bSpecial = cb?.special ?? null;
+
+    if (aSpecial && bSpecial) {
+      this.fireCombo(a, b, ca!, cb!, steps, cleared);
+      return;
+    }
+    // single special swapped with a normal candy — partner gives the colour
+    if (aSpecial) this.detonate(a, aSpecial, { partner: b }, steps, cleared);
+    else if (bSpecial) this.detonate(b, bSpecial, { partner: a }, steps, cleared);
   }
 
-  /** Cells a Special clears. Color Bomb uses its swap partner's colour. */
-  private specialCells(origin: Pos, special: SpecialType, partner: Pos): Pos[] {
+  /**
+   * Detonate one Special at `origin`. Marks it firing, removes it from the grid,
+   * computes its footprint, and applies the blast (which chains other Specials).
+   * `opts.colour` overrides the target colour (combos / color-bomb).
+   */
+  private detonate(
+    origin: Pos,
+    special: SpecialType,
+    opts: { partner?: Pos; colour?: Colour | null },
+    steps: Step[],
+    cleared: Colour[],
+  ) {
+    const self = this.grid[origin.row][origin.col];
+    if (self) this.firing.add(self.id);
+
+    if (special === "coloring") {
+      // recolour, don't clear: convert the partner's colour to this candy's own
+      const myColour = self?.colour ?? null;
+      const target =
+        opts.colour ??
+        (opts.partner ? this.grid[opts.partner.row][opts.partner.col]?.colour : null) ??
+        null;
+      // the coloring candy itself is consumed (cleared)
+      this.blast([origin], origin, special, steps, cleared);
+      if (myColour !== null && target !== null && target !== myColour) {
+        this.recolour(target, myColour, steps);
+      }
+      return;
+    }
+
+    if (special === "fish") {
+      const target = this.fishTarget(origin);
+      if (self) steps.push({ kind: "fish-fly", id: self.id, from: origin, to: target });
+      // remove the fish itself, then pop a small + at the target
+      this.blast([origin], origin, special, steps, cleared);
+      this.blast(this.plusCells(target), target, special, steps, cleared);
+      return;
+    }
+
+    const cells = this.footprint(origin, special, opts);
+    this.blast(cells, origin, special, steps, cleared);
+  }
+
+  /**
+   * Fire a Combo: two Specials swapped together. `a` holds candy ca, `b` holds
+   * cb. The combined effect is bigger than either alone. Capped-radius combos
+   * (bomb+bomb, coloring+coloring) clear a large but bounded area so they can't
+   * be a guaranteed one-move win.
+   */
+  private fireCombo(
+    a: Pos,
+    b: Pos,
+    ca: Candy,
+    cb: Candy,
+    steps: Step[],
+    cleared: Colour[],
+  ) {
+    const types = [ca.special!, cb.special!];
+    const has = (t: SpecialType) => types.includes(t);
+    const both = (t: SpecialType) => types[0] === t && types[1] === t;
+    const stripe = (t: SpecialType) => t === "striped-row" || t === "striped-col";
+    const origin = b; // effects centre on the second (swapped-into) cell
+    // consume both special candies up front so they don't re-chain
+    this.firing.add(ca.id);
+    this.firing.add(cb.id);
+
+    // --- color bomb combos ---
+    if (both("color-bomb")) {
+      // clear a large capped area (~45% of the board) around the origin
+      this.blast(this.cappedArea(origin, 0.45), origin, "color-bomb", steps, cleared);
+      return;
+    }
+    if (has("color-bomb") && types.some(stripe)) {
+      // turn every candy of the dominant colour into a striped, then fire them
+      const colour = this.randomBoardColour();
+      this.blast([a, b], origin, "color-bomb", steps, cleared); // pop the two specials
+      if (colour !== null) this.convertColourAndFire(colour, "striped-row", steps, cleared);
+      return;
+    }
+    if (has("color-bomb") && has("wrapped")) {
+      const colour = this.randomBoardColour();
+      this.blast([a, b], origin, "color-bomb", steps, cleared);
+      if (colour !== null) this.convertColourAndFire(colour, "wrapped", steps, cleared, 0.45);
+      return;
+    }
+    if (has("color-bomb") && has("fish")) {
+      // many fish: spawn a fish-pop on several candies of one colour
+      const colour = this.randomBoardColour();
+      this.blast([a, b], origin, "fish", steps, cleared);
+      this.manyFish(colour, steps, cleared);
+      return;
+    }
+    if (has("color-bomb") && has("coloring")) {
+      // massive colour transform + destruction (capped)
+      const colour = this.randomBoardColour();
+      this.blast([a, b], origin, "color-bomb", steps, cleared);
+      if (colour !== null) this.recolour(colour, ca.colour ?? cb.colour ?? colour, steps);
+      this.blast(this.cappedArea(origin, 0.4), origin, "color-bomb", steps, cleared);
+      return;
+    }
+
+    // --- coloring combos ---
+    if (both("coloring")) {
+      // very large transform/clear (capped)
+      this.blast(this.cappedArea(origin, 0.5), origin, "coloring", steps, cleared);
+      return;
+    }
+    if (has("coloring") && has("fish")) {
+      const colour = ca.special === "coloring" ? ca.colour : cb.colour;
+      this.blast([a, b], origin, "fish", steps, cleared);
+      if (colour !== null) this.manyFish(colour, steps, cleared);
+      return;
+    }
+
+    // --- striped / wrapped / fish combos ---
+    if (both("striped-row") || both("striped-col") ||
+        (stripe(types[0]) && stripe(types[1]))) {
+      // cross: clear the origin's full row AND column
+      const cross = [
+        ...this.footprint(origin, "striped-row", {}),
+        ...this.footprint(origin, "striped-col", {}),
+      ];
+      this.blast(cross, origin, "striped-row", steps, cleared);
+      return;
+    }
+    if (types.some(stripe) && has("wrapped")) {
+      // 3 rows + 3 columns
+      const cells: Pos[] = [];
+      for (let d = -1; d <= 1; d++) {
+        const rr = origin.row + d;
+        const cc = origin.col + d;
+        if (rr >= 0 && rr < this.rows)
+          for (let c = 0; c < this.cols; c++) cells.push({ row: rr, col: c });
+        if (cc >= 0 && cc < this.cols)
+          for (let r = 0; r < this.rows; r++) cells.push({ row: r, col: cc });
+      }
+      this.blast(cells, origin, "wrapped", steps, cleared);
+      return;
+    }
+    if (types.some(stripe) && has("fish")) {
+      // fish carries a striped (cross) blast to its target
+      const target = this.fishTarget(origin);
+      this.emitFishFly(a, b, target, steps);
+      this.blast([a, b], origin, "fish", steps, cleared);
+      const cross = [
+        ...this.footprint(target, "striped-row", {}),
+        ...this.footprint(target, "striped-col", {}),
+      ];
+      this.blast(cross, target, "striped-row", steps, cleared);
+      return;
+    }
+    if (both("wrapped")) {
+      // large 5x5 explosion
+      this.blast(this.squareArea(origin, 2), origin, "wrapped", steps, cleared);
+      return;
+    }
+    if (has("wrapped") && has("fish")) {
+      const target = this.fishTarget(origin);
+      this.emitFishFly(a, b, target, steps);
+      this.blast([a, b], origin, "fish", steps, cleared);
+      this.blast(this.squareArea(target, 1), target, "wrapped", steps, cleared);
+      return;
+    }
+
+    // fallback: fire both independently
+    this.blast([a], a, ca.special!, steps, cleared);
+    this.detonate(a, ca.special!, { partner: b }, steps, cleared);
+    this.detonate(b, cb.special!, { partner: a }, steps, cleared);
+  }
+
+  /** Emit a fish-fly step from whichever of the two cells holds the fish. */
+  private emitFishFly(a: Pos, b: Pos, target: Pos, steps: Step[]) {
+    const fishPos = this.grid[a.row][a.col]?.special === "fish" ? a : b;
+    const id = this.grid[fishPos.row][fishPos.col]?.id;
+    if (id != null) steps.push({ kind: "fish-fly", id, from: fishPos, to: target });
+  }
+
+  /** A centred square of half-width `rad` (clamped to the board). */
+  private squareArea(origin: Pos, rad: number): Pos[] {
+    const cells: Pos[] = [];
+    for (let dr = -rad; dr <= rad; dr++)
+      for (let dc = -rad; dc <= rad; dc++) {
+        const r = origin.row + dr;
+        const c = origin.col + dc;
+        if (this.inBounds(r, c)) cells.push({ row: r, col: c });
+      }
+    return cells;
+  }
+
+  /** A capped blast area: the cells nearest the origin, up to `frac` of board. */
+  private cappedArea(origin: Pos, frac: number): Pos[] {
+    const budget = Math.floor(this.rows * this.cols * frac);
+    const all: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) all.push({ row: r, col: c });
+    all.sort(
+      (p, q) =>
+        Math.hypot(p.row - origin.row, p.col - origin.col) -
+        Math.hypot(q.row - origin.row, q.col - origin.col),
+    );
+    return all.slice(0, budget);
+  }
+
+  /** Convert all candies of a colour into a Special, then detonate each. */
+  private convertColourAndFire(
+    colour: Colour,
+    special: SpecialType,
+    steps: Step[],
+    cleared: Colour[],
+    cap = 1,
+  ) {
+    const spots: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell?.colour === colour && !cell.special) spots.push({ row: r, col: c });
+      }
+    const limit = cap < 1 ? Math.floor(spots.length * cap) : spots.length;
+    for (const p of spots.slice(0, Math.max(1, limit))) {
+      this.detonate(p, special, {}, steps, cleared);
+    }
+  }
+
+  /** Spawn fish on several candies of a colour (capped), each flying off. */
+  private manyFish(colour: Colour | null, steps: Step[], cleared: Colour[]) {
+    const spots: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell && !cell.special && (colour === null || cell.colour === colour))
+          spots.push({ row: r, col: c });
+      }
+    for (const p of spots.slice(0, 5)) {
+      if (this.grid[p.row][p.col]) this.detonate(p, "fish", {}, steps, cleared);
+    }
+  }
+
+  /** The cells a (non-fish, non-coloring) Special covers. */
+  private footprint(
+    origin: Pos,
+    special: SpecialType,
+    opts: { partner?: Pos; colour?: Colour | null },
+  ): Pos[] {
     const cells: Pos[] = [];
     if (special === "striped-row") {
       for (let c = 0; c < this.cols; c++) cells.push({ row: origin.row, col: c });
     } else if (special === "striped-col") {
       for (let r = 0; r < this.rows; r++) cells.push({ row: r, col: origin.col });
-    } else {
-      // color-bomb: clear all of the partner candy's colour (or partner itself
-      // if it is also a bomb, just clear the two specials).
-      const target = this.grid[partner.row][partner.col]?.colour ?? null;
+    } else if (special === "wrapped") {
+      for (let dr = -1; dr <= 1; dr++)
+        for (let dc = -1; dc <= 1; dc++) {
+          const r = origin.row + dr;
+          const c = origin.col + dc;
+          if (this.inBounds(r, c)) cells.push({ row: r, col: c });
+        }
+    } else if (special === "color-bomb") {
+      // clear all of a target colour (partner's, or a forced colour)
+      const target =
+        opts.colour ??
+        (opts.partner ? this.grid[opts.partner.row][opts.partner.col]?.colour : null) ??
+        this.randomBoardColour();
       cells.push(origin);
-      if (target === null) {
-        cells.push(partner);
-      } else {
+      if (target !== null) {
         for (let r = 0; r < this.rows; r++)
           for (let c = 0; c < this.cols; c++)
-            if (this.grid[r][c]?.colour === target) cells.push({ row: r, col: c });
+            if (this.grid[r][c]?.colour === target && !this.grid[r][c]?.special)
+              cells.push({ row: r, col: c });
       }
     }
     return cells;
+  }
+
+  /** A plus shape (centre + 4 orthogonal) used by a fish's pop. */
+  private plusCells(p: Pos): Pos[] {
+    const out: Pos[] = [p];
+    for (const [dr, dc] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ]) {
+      const r = p.row + dr;
+      const c = p.col + dc;
+      if (this.inBounds(r, c)) out.push({ row: r, col: c });
+    }
+    return out;
+  }
+
+  /**
+   * Clear a set of cells as a blast, emitting a special-activate step, updating
+   * jelly/blockers/frozen/boxes, and CHAINING: any not-yet-firing Special among
+   * those cells detonates in turn.
+   */
+  private blast(
+    cells: Pos[],
+    origin: Pos,
+    special: SpecialType,
+    steps: Step[],
+    cleared: Colour[],
+  ) {
+    // find specials to chain BEFORE clearing (clearCells nulls them out)
+    const chain: { pos: Pos; special: SpecialType }[] = [];
+    for (const p of cells) {
+      const cell = this.grid[p.row]?.[p.col];
+      if (cell?.special && !this.firing.has(cell.id) && !samePos(p, origin)) {
+        this.firing.add(cell.id);
+        chain.push({ pos: { ...p }, special: cell.special });
+      }
+    }
+    const { cells: cl, ids, jelly } = this.clearCells(cells, cleared);
+    steps.push({ kind: "special-activate", origin, cleared: cl, ids, special });
+    this.pushJelly(steps, jelly);
+    this.clearAdjacentBlockers(cl, steps);
+    this.thawAdjacentFrozen(cl, steps);
+    this.hitAdjacentBoxes(cl, steps);
+    // chain-detonate any specials the blast covered
+    for (const c of chain) this.detonate(c.pos, c.special, {}, steps, cleared);
+  }
+
+  /** Recolour every cell of `from` colour into `to` colour (no clear). */
+  private recolour(from: Colour, to: Colour, steps: Step[]) {
+    const cells: Pos[] = [];
+    const ids: number[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell && cell.colour === from && !cell.special && !cell.ingredient &&
+            !cell.blocker && !cell.frozen && !cell.box) {
+          cell.colour = to;
+          cells.push({ row: r, col: c });
+          ids.push(cell.id);
+        }
+      }
+    if (cells.length) steps.push({ kind: "recolor", cells, ids, colour: to });
+  }
+
+  /** Pick a colour present on the board (fallback for a lone color-bomb). */
+  private randomBoardColour(): Colour | null {
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell && cell.colour !== null && !cell.special) return cell.colour;
+      }
+    return null;
+  }
+
+  /**
+   * Objective-aware fish target: prefer a jellied cell, then a box/blocker, then
+   * an ingredient, else a deterministic-ish ordinary candy. Never the origin.
+   */
+  private fishTarget(origin: Pos): Pos {
+    let jelly: Pos | null = null;
+    let obstacle: Pos | null = null;
+    let candy: Pos | null = null;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        if (r === origin.row && c === origin.col) continue;
+        if (this.jelly[r][c] > 0 && !jelly) jelly = { row: r, col: c };
+        const cell = this.grid[r][c];
+        if (!cell) continue;
+        if ((cell.box || cell.blocker) && !obstacle) obstacle = { row: r, col: c };
+        if (cell.colour !== null && !cell.special && !candy) candy = { row: r, col: c };
+      }
+    return jelly ?? obstacle ?? candy ?? origin;
   }
 
   /**
@@ -792,30 +1139,137 @@ export class Board {
     return false;
   }
 
-  /** Choose where Specials are created from this pass's runs. */
+  /**
+   * Choose where Specials are created from this pass's runs, by SHAPE not just
+   * line length. Runs are grouped into connected same-colour components (a T/L
+   * is a horizontal run meeting a vertical run); each component yields at most
+   * one Special, classified by priority:
+   *   color-bomb (line ≥5) > coloring (blob ≥6) > wrapped (T/L) >
+   *   fish (contains a 2×2 block) > striped (line of 4).
+   */
   private planSpecials(
     runs: Run[],
     swap: { swapA: Pos; swapB: Pos } | null,
   ): { at: Pos; special: SpecialType; colour: Colour }[] {
     const out: { at: Pos; special: SpecialType; colour: Colour }[] = [];
+    if (runs.length === 0) return out;
+
+    // Union all run cells, then split into connected same-colour components.
+    const cellRun = new Map<string, Run[]>(); // cell key → runs covering it
+    const all: Pos[] = [];
     for (const run of runs) {
-      const len = run.cells.length;
-      if (len < 4) continue;
-      const special: SpecialType =
-        len >= 5 ? "color-bomb" : run.horizontal ? "striped-col" : "striped-row";
-      // On a swap-made match, spawn at the swapped cell if it lies in this run.
-      let at = run.cells[0];
-      if (swap) {
-        const onA = run.cells.find((p) => samePos(p, swap.swapA));
-        const onB = run.cells.find((p) => samePos(p, swap.swapB));
-        at = onA ?? onB ?? run.cells[Math.floor(len / 2)];
-      } else {
-        at = run.cells[Math.floor(len / 2)];
+      for (const p of run.cells) {
+        const kk = key(p);
+        if (!cellRun.has(kk)) {
+          cellRun.set(kk, []);
+          all.push(p);
+        }
+        cellRun.get(kk)!.push(run);
       }
-      const colour = this.grid[run.cells[0].row][run.cells[0].col]!.colour!;
-      out.push({ at, special, colour });
+    }
+    const seen = new Set<string>();
+    for (const start of all) {
+      if (seen.has(key(start))) continue;
+      // BFS the component of same-colour matched cells (4-connected)
+      const colour = this.grid[start.row][start.col]!.colour!;
+      const comp: Pos[] = [];
+      const stack = [start];
+      seen.add(key(start));
+      while (stack.length) {
+        const p = stack.pop()!;
+        comp.push(p);
+        for (const [dr, dc] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          const np = { row: p.row + dr, col: p.col + dc };
+          const nk = key(np);
+          if (
+            cellRun.has(nk) &&
+            !seen.has(nk) &&
+            this.grid[np.row]?.[np.col]?.colour === colour
+          ) {
+            seen.add(nk);
+            stack.push(np);
+          }
+        }
+      }
+      const plan = this.classifyComponent(comp, colour, swap);
+      if (plan) out.push(plan);
     }
     return out;
+  }
+
+  /** Classify one matched component into a Special (or null = just clears). */
+  private classifyComponent(
+    comp: Pos[],
+    colour: Colour,
+    swap: { swapA: Pos; swapB: Pos } | null,
+  ): { at: Pos; special: SpecialType; colour: Colour } | null {
+    // longest horizontal / vertical straight run within the component
+    const set = new Set(comp.map(key));
+    let maxH = 1;
+    let maxV = 1;
+    let isLLshape = false;
+    for (const p of comp) {
+      let h = 1;
+      while (set.has(key({ row: p.row, col: p.col + h }))) h++;
+      let v = 1;
+      while (set.has(key({ row: p.row + v, col: p.col }))) v++;
+      maxH = Math.max(maxH, h);
+      maxV = Math.max(maxV, v);
+    }
+    // T/L: a cell that begins (or lies on) a ≥3 horizontal and a ≥3 vertical run
+    const hasRun = (p: Pos, horiz: boolean, n: number) => {
+      for (let i = 0; i < n; i++) {
+        const q = horiz ? { row: p.row, col: p.col - i } : { row: p.row - i, col: p.col };
+        let ok = true;
+        for (let j = 0; j < n; j++) {
+          const c = horiz
+            ? { row: q.row, col: q.col + j }
+            : { row: q.row + j, col: q.col };
+          if (!set.has(key(c))) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) return true;
+      }
+      return false;
+    };
+    for (const p of comp) {
+      if (hasRun(p, true, 3) && hasRun(p, false, 3)) {
+        isLLshape = true;
+        break;
+      }
+    }
+    const maxLine = Math.max(maxH, maxV);
+    const has2x2 = comp.some(
+      (p) =>
+        set.has(key({ row: p.row, col: p.col + 1 })) &&
+        set.has(key({ row: p.row + 1, col: p.col })) &&
+        set.has(key({ row: p.row + 1, col: p.col + 1 })),
+    );
+
+    let special: SpecialType | null = null;
+    if (maxLine >= 5) special = "color-bomb";
+    else if (comp.length >= 6) special = "coloring";
+    else if (isLLshape) special = "wrapped";
+    else if (has2x2) special = "fish";
+    else if (maxLine === 4)
+      special = maxH >= 4 ? "striped-col" : "striped-row";
+    if (!special) return null;
+
+    // Prefer the swapped cell as the spawn point if it lies in the component.
+    let at = comp[Math.floor(comp.length / 2)];
+    if (swap) {
+      const onA = comp.find((p) => samePos(p, swap.swapA));
+      const onB = comp.find((p) => samePos(p, swap.swapB));
+      at = onA ?? onB ?? at;
+    }
+    return { at, special, colour };
   }
 
   /**

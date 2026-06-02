@@ -3,7 +3,17 @@
 /** A Colour is identified by its index 0..COLOUR_COUNT-1. */
 export type Colour = number;
 
-export type SpecialType = "striped-row" | "striped-col" | "color-bomb";
+export type SpecialType =
+  | "striped-row" // clears its row (from 4-in-a-row horizontal)
+  | "striped-col" // clears its column (from 4-in-a-row vertical)
+  | "color-bomb" // clears all of one colour (from 5-in-a-line)
+  | "wrapped" // 3x3 explosion (from a T/L shape)
+  | "fish" // flies to a useful target and pops there (from a 2x2 block)
+  | "coloring"; // recolours one colour into its own (from a 6+ group)
+
+/** Whether a special fires along a line, so the view can pick row vs col FX. */
+export const isStriped = (s: SpecialType | null): boolean =>
+  s === "striped-row" || s === "striped-col";
 
 /** A Candy occupying a Cell. A Color Bomb has no own Colour (clears by target). */
 export interface Candy {
@@ -62,7 +72,19 @@ export type Step =
       colour: Colour | null;
       special: SpecialType;
     }
-  | { kind: "special-activate"; origin: Pos; cleared: Pos[]; ids: number[] }
+  // A Special detonated. `special` lets the view pick the right FX (line wave,
+  // 3x3 burst, bomb flash, …); for combos it's the dominant/combined effect tag.
+  | {
+      kind: "special-activate";
+      origin: Pos;
+      cleared: Pos[];
+      ids: number[];
+      special: SpecialType;
+    }
+  // A Fish travels from its origin to a target cell before popping there.
+  | { kind: "fish-fly"; id: number; from: Pos; to: Pos }
+  // Coloring candy recoloured these cells to `colour` (no clear). Parallel ids.
+  | { kind: "recolor"; cells: Pos[]; ids: number[]; colour: Colour }
   | { kind: "fall"; moves: { id: number; from: Pos; to: Pos }[] }
   | { kind: "spawn"; spawns: { id: number; colour: Colour; at: Pos }[] }
   // Avalanche: Ingredients (burger parts) raining in from the top during play.

@@ -147,6 +147,22 @@ export function drawCandy(
     }
     if (special === "striped-row" || special === "striped-col") {
       drawStripes(k, x, y, half, special === "striped-row");
+    } else if (special === "wrapped") {
+      // a bright wrapper ring (corners pulled in)
+      k.drawRect({
+        pos: k.vec2(x, y),
+        width: tile * 0.62,
+        height: tile * 0.62,
+        anchor: "center",
+        radius: tile * 0.1,
+        fill: false,
+        outline: { width: Math.max(2, tile * 0.1), color: k.rgb(255, 255, 255) },
+      });
+    } else if (special === "fish") {
+      k.drawText({ text: "🐟", pos: k.vec2(x, y), size: tile * 0.6, anchor: "center", color: white });
+    } else if (special === "coloring") {
+      // a sparkle marks the coloring candy (keeps its own colour tile)
+      k.drawText({ text: "✨", pos: k.vec2(x, y - tile * 0.02), size: tile * 0.5, anchor: "center", color: white });
     }
   }
 

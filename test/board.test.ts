@@ -6,29 +6,21 @@ import { makeRng } from "../src/core/rng.ts";
 import type { Candy, Step } from "../src/core/types.ts";
 
 function findMatchRun(grid: (Candy | null)[][]): string | null {
+  // Mirror Board.colourAt: a Color Bomb (null colour) and a Frozen candy never
+  // match; other coloured candies (incl. striped/wrapped/etc.) do.
+  const mc = (cell: Candy | null): number | null =>
+    cell && cell.special !== "color-bomb" && !cell.frozen ? cell.colour : null;
   // horizontal
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c <= COLS - 3; c++) {
-      const a = grid[r][c],
-        b = grid[r][c + 1],
-        d = grid[r][c + 2];
-      if (
-        a?.colour != null &&
-        a.colour === b?.colour &&
-        a.colour === d?.colour
-      )
+      const a = mc(grid[r][c]);
+      if (a != null && a === mc(grid[r][c + 1]) && a === mc(grid[r][c + 2]))
         return `h ${r},${c}`;
     }
   for (let c = 0; c < COLS; c++)
     for (let r = 0; r <= ROWS - 3; r++) {
-      const a = grid[r][c],
-        b = grid[r + 1][c],
-        d = grid[r + 2][c];
-      if (
-        a?.colour != null &&
-        a.colour === b?.colour &&
-        a.colour === d?.colour
-      )
+      const a = mc(grid[r][c]);
+      if (a != null && a === mc(grid[r + 1][c]) && a === mc(grid[r + 2][c]))
         return `v ${r},${c}`;
     }
   return null;

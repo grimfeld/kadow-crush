@@ -103,11 +103,10 @@ export class GameView {
   private particles: Particles;
   private effects: Effects;
   private music = new MusicPlayer();
-  // Sugar Crush finale toggle, persisted across sessions (default on).
-  private sugarCrushOn =
-    typeof localStorage !== "undefined"
-      ? localStorage.getItem("kadow.sugarCrush") !== "off"
-      : true;
+  // Sugar Crush finale: disabled by default (the animation still needs polish).
+  // The engine + view support it (Game.sugarCrushEnabled / board.sugarCrush);
+  // flip this to true to re-enable. No menu toggle for now.
+  private sugarCrushOn = false;
   // Idle hint: seconds since the last input while a move is possible. After
   // HINT_DELAY a legal swap is shown pulsing until the player acts.
   private idle = 0;
@@ -883,15 +882,6 @@ export class GameView {
           this.menuDrag = null;
           return;
         }
-        // Sugar Crush toggle chip (top-left)
-        if (this.menu.hitSugar(p.x, p.y)) {
-          playSound("swap");
-          this.sugarCrushOn = !this.sugarCrushOn;
-          if (typeof localStorage !== "undefined")
-            localStorage.setItem("kadow.sugarCrush", this.sugarCrushOn ? "on" : "off");
-          this.menuDrag = null;
-          return;
-        }
         // begin a press: it becomes a scroll-drag if the finger moves, else a
         // tap-to-select on release.
         this.menuDrag = { startY: p.y, lastY: p.y, moved: false };
@@ -1092,7 +1082,7 @@ export class GameView {
 
   draw() {
     if (this.mode === "menu") {
-      this.menu.draw(this.music.label, this.sugarCrushOn);
+      this.menu.draw(this.music.label);
       this.particles.draw();
       return;
     }

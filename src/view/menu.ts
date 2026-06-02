@@ -63,7 +63,6 @@ const CARD_H = 116;
 export class MenuScreen {
   private cards: CardRect[] = [];
   private musicRect = { x: 0, y: 0, w: 0, h: 0 };
-  private sugarRect = { x: 0, y: 0, w: 0, h: 0 };
   // Vertical scroll offset of the card grid (px), clamped to [0, maxScroll].
   private scrollY = 0;
   private maxScroll = 0;
@@ -101,17 +100,8 @@ export class MenuScreen {
     return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
   }
 
-  /** Whether (px,py) hits the Sugar Crush toggle chip. */
-  hitSugar(px: number, py: number): boolean {
-    const r = this.sugarRect;
-    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
-  }
-
-  /**
-   * @param musicLabel current music selection label ("Off" or a track name).
-   * @param sugarOn    whether the Sugar Crush finale is enabled.
-   */
-  draw(musicLabel: string, sugarOn: boolean) {
+  /** @param musicLabel current music selection label ("Off" or a track name). */
+  draw(musicLabel: string) {
     const k = this.k;
     const W = k.width();
     const H = k.height();
@@ -147,8 +137,6 @@ export class MenuScreen {
 
     // Music chip (top-right) — tap to cycle tracks / off.
     this.drawMusicChip(musicLabel, W, H, dark, accent);
-    // Sugar Crush toggle (top-left) — tap to enable/disable the finale.
-    this.drawSugarChip(sugarOn, W, H, dark, accent);
 
     // 2-column grid of fixed-height cards; scrolls when it overflows.
     const top = titleY + Math.min(64, H * 0.11);
@@ -256,40 +244,6 @@ export class MenuScreen {
       pos: k.vec2(x + w / 2, y + h / 2),
       size,
       color: off ? dark : k.rgb(255, 255, 255),
-      anchor: "center",
-    });
-  }
-
-  private drawSugarChip(
-    on: boolean,
-    W: number,
-    H: number,
-    dark: ReturnType<KAPLAYCtx["rgb"]>,
-    accent: ReturnType<KAPLAYCtx["rgb"]>,
-  ) {
-    const k = this.k;
-    const h = Math.max(30, Math.min(40, H * 0.05));
-    const text = on ? "🍬 Crush: On" : "🍬 Crush: Off";
-    const size = h * 0.4;
-    const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
-    const w = Math.min(W * 0.46, m.width + h * 0.9);
-    const x = W * 0.05;
-    const y = Math.max(8, H * 0.018);
-    this.sugarRect = { x, y, w, h };
-    k.drawRect({
-      pos: k.vec2(x, y),
-      width: w,
-      height: h,
-      radius: h / 2,
-      color: on ? accent : k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
-      opacity: on ? 1 : 0.7,
-      outline: { width: 2, color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]) },
-    });
-    k.drawText({
-      text,
-      pos: k.vec2(x + w / 2, y + h / 2),
-      size,
-      color: on ? k.rgb(255, 255, 255) : dark,
       anchor: "center",
     });
   }

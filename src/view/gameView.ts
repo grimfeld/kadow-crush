@@ -181,35 +181,47 @@ export class GameView {
     const sameRow = cleared.every((p) => p.row === origin.row);
     const sameCol = cleared.every((p) => p.col === origin.col);
     const cell = this.layout.cell;
+    const L = this.layout.originX;
+    const R = this.layout.originX + this.layout.boardW;
+    const T = this.layout.originY;
+    const B = this.layout.originY + this.layout.boardH;
     if (sameRow && !sameCol) {
-      const cy = oy;
-      const cx = this.layout.originX + this.layout.boardW / 2;
-      this.effects.rowBeam(cx, cy, this.layout.boardW, cell * 0.7, [255, 210, 90]);
+      this.effects.rowWave(ox, oy, L, R, cell * 0.8, [255, 210, 90]);
     } else if (sameCol && !sameRow) {
-      const cx = ox;
-      const cy = this.layout.originY + this.layout.boardH / 2;
-      this.effects.colBeam(cx, cy, this.layout.boardH, cell * 0.7, [255, 210, 90]);
+      this.effects.colWave(ox, oy, T, B, cell * 0.8, [255, 210, 90]);
     } else {
       this.effects.flash(ox, oy, cell * 3, [120, 200, 255]);
     }
   }
 
-  /** Pop an escalating praise word for a cascade of the given depth. */
+  /**
+   * Pop a praise word for a cascade of the given depth. Words are tiered by
+   * depth (gentle → emphatic), and a random one is drawn from the tier so
+   * repeats feel varied rather than a fixed ladder.
+   */
   private praiseCascade(depth: number) {
-    const words = ["Sweet!", "Tasty!", "Yummy!", "Delicious!", "Combo!", "Sugar Rush!"];
-    const colours: [number, number, number][] = [
-      [240, 140, 60],
-      [231, 76, 96],
-      [150, 89, 200],
-      [46, 184, 113],
-      [52, 130, 219],
+    // tiers: depth 2, 3, 4, 5+ — each picks randomly from its bucket
+    const tiers: string[][] = [
+      ["Sweet!", "Nice!", "Tasty!", "Yum!", "Mmm!", "Pop!"],
+      ["Yummy!", "Delicious!", "Juicy!", "Combo!", "Crunch!", "Zesty!"],
+      ["Scrumptious!", "Mega Combo!", "Fruit Frenzy!", "Sugar Rush!", "Sizzling!"],
+      ["UNSTOPPABLE!", "SUGAR STORM!", "CANDY CHAOS!", "LEGENDARY!", "SWEET-TASTIC!"],
     ];
-    const word = words[Math.min(depth - 2, words.length - 1)];
-    const colour = colours[(depth - 2) % colours.length];
+    const colours: [number, number, number][] = [
+      [240, 140, 60], // orange
+      [231, 76, 96], // red
+      [150, 89, 200], // purple
+      [46, 184, 113], // green
+      [52, 130, 219], // blue
+      [236, 64, 160], // pink
+    ];
+    const tier = tiers[Math.min(depth - 2, tiers.length - 1)];
+    const word = tier[Math.floor(this.k.rand(0, tier.length))];
+    const colour = colours[Math.floor(this.k.rand(0, colours.length))];
     const x = this.layout.originX + this.layout.boardW / 2;
     // place it a little higher for each deeper rung so stacked combos don't overlap
     const y = this.layout.originY + this.layout.boardH * 0.32 - depth * 12;
-    const size = Math.min(48, this.layout.cell * (1.1 + depth * 0.08));
+    const size = Math.min(56, this.layout.cell * (1.1 + depth * 0.1));
     this.effects.word(word, x, y, colour, size);
     playSound("special");
   }

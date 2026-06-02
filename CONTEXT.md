@@ -71,7 +71,7 @@ One playable definition on the level-select menu: a board size, a colour count, 
 The menu screen listing the Challenges as a 2-column grid of fixed-height cards. The grid scrolls vertically (wheel or drag) when it overflows the viewport, with a faint scrollbar; the title and music chip stay fixed above it. The player picks one to play and returns to it on Win or Loss.
 
 ### Juice (feedback effects)
-View-only feedback layered over the board, all time-driven and self-expiring (see `effects.ts`): an **idle hint** (after 3s at rest, a legal Swap pulses/bounces), **special-clear beams** (a row/column streak or a radial flash when a Special fires), **cascade words** (escalating praise — "Sweet!", "Combo!", … — one per cascade round beyond the first), and **fly-to-goal** (a cleared Target Colour's fruit arcs to its goal chip, bumping it). None of this touches game state.
+View-only feedback layered over the board, all time-driven and self-expiring (see `effects.ts`): an **idle hint** (after 3s at rest, a legal Swap pulses/bounces), **special-clear waves** (a ripple travelling out from where a striped Special fired along its row/column, or a radial flash for a color bomb), **cascade words** (praise drawn at random from depth-tiered buckets, one per cascade round beyond the first), and **fly-to-goal** (a cleared Target Colour's fruit arcs to its goal chip, bumping it). None of this touches game state.
 
 ### Tutorial
 A beginner-oriented screen shown after a Challenge is picked and before it starts. It explains the universal controls (swap two adjacent Candies; line up 3+ to clear) and the Challenge's own goal and win condition, then a Play button begins the level. Per-Challenge wording lives in the Challenge definition.

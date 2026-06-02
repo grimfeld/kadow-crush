@@ -32,16 +32,22 @@ interface Flyer {
 }
 
 interface Beam {
-  // axis-aligned bar from one board edge along a row/col, or a radial flash
+  // A wave travelling out from the origin along a row/col, or a radial flash.
   kind: "row" | "col" | "flash";
-  x: number;
-  y: number;
-  len: number; // length along the axis (row/col) — full board span
-  thick: number;
+  // origin of the wave (where the Special fired)
+  ox: number;
+  oy: number;
+  // along-axis bounds the wave can reach (board edges); cross-axis is fixed
+  lo: number; // min along-axis coordinate
+  hi: number; // max along-axis coordinate
+  thick: number; // cross-axis thickness (cell-sized)
   life: number;
   maxLife: number;
   color: [number, number, number];
 }
+
+// How many sample segments make up each travelling wave (more = smoother sine).
+const WAVE_SEGMENTS = 14;
 
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
@@ -82,19 +88,22 @@ export class Effects {
     });
   }
 
-  /** A horizontal striped-clear beam across a row. */
-  rowBeam(cx: number, cy: number, len: number, thick: number, color: [number, number, number]) {
-    this.beams.push({ kind: "row", x: cx, y: cy, len, thick, life: 0.32, maxLife: 0.32, color });
+  /**
+   * A wave that ripples outward along a row from the origin (ox) to both ends
+   * (lo..hi = board's left/right edge x), fixed on row y = oy.
+   */
+  rowWave(ox: number, oy: number, lo: number, hi: number, thick: number, color: [number, number, number]) {
+    this.beams.push({ kind: "row", ox, oy, lo, hi, thick, life: 0.45, maxLife: 0.45, color });
   }
 
-  /** A vertical striped-clear beam down a column. */
-  colBeam(cx: number, cy: number, len: number, thick: number, color: [number, number, number]) {
-    this.beams.push({ kind: "col", x: cx, y: cy, len, thick, life: 0.32, maxLife: 0.32, color });
+  /** A wave rippling outward along a column from oy to top/bottom edge. */
+  colWave(ox: number, oy: number, lo: number, hi: number, thick: number, color: [number, number, number]) {
+    this.beams.push({ kind: "col", ox, oy, lo, hi, thick, life: 0.45, maxLife: 0.45, color });
   }
 
   /** A radial flash for a color-bomb. */
   flash(cx: number, cy: number, radius: number, color: [number, number, number]) {
-    this.beams.push({ kind: "flash", x: cx, y: cy, len: radius, thick: 0, life: 0.36, maxLife: 0.36, color });
+    this.beams.push({ kind: "flash", ox: cx, oy: cy, lo: 0, hi: radius, thick: radius, life: 0.36, maxLife: 0.36, color });
   }
 
   update(dt: number) {
@@ -130,40 +139,58 @@ export class Effects {
       const a = Math.max(0, b.life / b.maxLife);
       const col = k.rgb(b.color[0], b.color[1], b.color[2]);
       if (b.kind === "flash") {
+        const radius = b.hi * (1 - a) * 1.1; // expand outward
         k.drawCircle({
-          pos: k.vec2(b.x, b.y),
-          radius: b.len * (1 - a) * 1.1, // expand outward
+          pos: k.vec2(b.ox, b.oy),
+          radius,
           color: col,
           opacity: a * 0.5,
         });
         k.drawCircle({
-          pos: k.vec2(b.x, b.y),
-          radius: b.len * (1 - a) * 1.1,
+          pos: k.vec2(b.ox, b.oy),
+          radius,
           color: k.rgb(255, 255, 255),
           opacity: a * 0.35,
         });
       } else {
-        const grow = 0.6 + 0.4 * (1 - a); // streak briefly widens
-        const w = b.kind === "row" ? b.len : b.thick * grow;
-        const h = b.kind === "row" ? b.thick * grow : b.len;
-        k.drawRect({
-          pos: k.vec2(b.x, b.y),
-          width: w,
-          height: h,
-          anchor: "center",
-          radius: b.thick / 2,
-          color: k.rgb(255, 255, 255),
-          opacity: a * 0.85,
-        });
-        k.drawRect({
-          pos: k.vec2(b.x, b.y),
-          width: w * 0.7,
-          height: h * 0.7,
-          anchor: "center",
-          radius: b.thick / 2,
-          color: col,
-          opacity: a * 0.7,
-        });
+        // A wave rippling out from the origin to both ends. `front` is how far
+        // the crest has travelled (0→max); segments near the crest are bright
+        // and wobble on the cross-axis, trailing segments fade behind it.
+        const p = 1 - a; // 0 at spawn → 1 at end
+        const isRow = b.kind === "row";
+        const origin = isRow ? b.ox : b.oy;
+        const reach = Math.max(origin - b.lo, b.hi - origin);
+        const front = p * reach;
+        const dotR = b.thick * 0.42;
+        for (let i = 0; i <= WAVE_SEGMENTS; i++) {
+          const d = (i / WAVE_SEGMENTS) * front; // distance from origin
+          // crest brightness: strongest right at the front, fading behind
+          const behind = (front - d) / Math.max(1, reach);
+          const bright = Math.max(0, 1 - behind * 2.2) * a;
+          if (bright <= 0.02) continue;
+          // cross-axis sine wobble that ripples as the wave advances
+          const wob = Math.sin(d * 0.05 - p * 10) * b.thick * 0.35;
+          for (const dir of [-1, 1]) {
+            const along = origin + dir * d;
+            if (along < b.lo - dotR || along > b.hi + dotR) continue;
+            const cx = isRow ? along : b.ox + wob;
+            const cy = isRow ? b.oy + wob : along;
+            const r = dotR * (0.7 + 0.6 * bright);
+            k.drawCircle({
+              pos: k.vec2(cx, cy),
+              radius: r,
+              color: k.rgb(255, 255, 255),
+              opacity: bright * 0.9,
+            });
+            k.drawCircle({
+              pos: k.vec2(cx, cy),
+              radius: r * 0.6,
+              color: col,
+              opacity: bright,
+            });
+            if (d === 0) break; // origin: single dot
+          }
+        }
       }
     }
 

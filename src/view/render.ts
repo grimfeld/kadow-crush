@@ -24,6 +24,22 @@ import {
   INGREDIENT_FILL,
 } from "./theme.ts";
 
+// Color objects are immutable tints that never change between frames, but the
+// candy loop draws ~64 tiles × several shapes each, every frame — calling
+// k.rgb() inside that loop allocated hundreds of throwaway Color objects per
+// frame, churning the GC (a real contributor to jank/heat on phones). Cache
+// each (r,g,b) → Color once and reuse it forever.
+const colorCache = new Map<number, ReturnType<KAPLAYCtx["rgb"]>>();
+function rgb(k: KAPLAYCtx, r: number, g: number, b: number) {
+  const key = (r << 16) | (g << 8) | b;
+  let c = colorCache.get(key);
+  if (!c) {
+    c = k.rgb(r, g, b); // raw — the only place that should call k.rgb directly
+    colorCache.set(key, c);
+  }
+  return c;
+}
+
 export function drawCellBg(k: KAPLAYCtx, x: number, y: number, cell: number) {
   const s = cell * 0.92;
   k.drawRect({
@@ -31,7 +47,7 @@ export function drawCellBg(k: KAPLAYCtx, x: number, y: number, cell: number) {
     width: s,
     height: s,
     radius: s * 0.22,
-    color: k.rgb(CELL_BG[0], CELL_BG[1], CELL_BG[2]),
+    color: rgb(k, CELL_BG[0], CELL_BG[1], CELL_BG[2]),
   });
 }
 
@@ -60,7 +76,7 @@ export function drawCandy(
   const half = tile / 2;
   // Emoji tint. Kaplay multiplies a drawText's `color` into the glyph; without
   // an explicit white the prior fill/text colour bleeds in and darkens it.
-  const white = k.rgb(255, 255, 255);
+  const white = rgb(k, 255, 255, 255);
 
   // Gift Box: a crate that needs `boxHits` more adjacent matches to crack open.
   if (box) {
@@ -69,8 +85,8 @@ export function drawCandy(
       width: tile,
       height: tile,
       radius: tile * 0.18,
-      color: k.rgb(BOX_FILL[0], BOX_FILL[1], BOX_FILL[2]),
-      outline: { width: Math.max(1, tile * 0.06), color: k.rgb(BOX_OUTLINE[0], BOX_OUTLINE[1], BOX_OUTLINE[2]) },
+      color: rgb(k, BOX_FILL[0], BOX_FILL[1], BOX_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.06), color: rgb(k, BOX_OUTLINE[0], BOX_OUTLINE[1], BOX_OUTLINE[2]) },
     });
     k.drawText({ text: "🎁", pos: k.vec2(x, y - tile * 0.06), size: tile * 0.5, anchor: "center", color: white });
     // hit pips along the bottom — how many knocks remain to crack it open
@@ -82,7 +98,7 @@ export function drawCandy(
         k.drawCircle({
           pos: k.vec2(startX + i * gap, y + half * 0.6),
           radius: pipR,
-          color: k.rgb(BOX_OUTLINE[0], BOX_OUTLINE[1], BOX_OUTLINE[2]),
+          color: rgb(k, BOX_OUTLINE[0], BOX_OUTLINE[1], BOX_OUTLINE[2]),
         });
       }
     }
@@ -96,8 +112,8 @@ export function drawCandy(
       width: tile,
       height: tile,
       radius: tile * 0.14,
-      color: k.rgb(CHOCO_FILL[0], CHOCO_FILL[1], CHOCO_FILL[2]),
-      outline: { width: Math.max(1, tile * 0.05), color: k.rgb(CHOCO_OUTLINE[0], CHOCO_OUTLINE[1], CHOCO_OUTLINE[2]) },
+      color: rgb(k, CHOCO_FILL[0], CHOCO_FILL[1], CHOCO_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.05), color: rgb(k, CHOCO_OUTLINE[0], CHOCO_OUTLINE[1], CHOCO_OUTLINE[2]) },
     });
     // a grid of squares to read as a chocolate bar
     const s2 = tile * 0.36;
@@ -108,7 +124,7 @@ export function drawCandy(
           width: s2,
           height: s2,
           radius: tile * 0.04,
-          color: k.rgb(CHOCO_OUTLINE[0], CHOCO_OUTLINE[1], CHOCO_OUTLINE[2]),
+          color: rgb(k, CHOCO_OUTLINE[0], CHOCO_OUTLINE[1], CHOCO_OUTLINE[2]),
           opacity: 0.5,
         });
     return;
@@ -121,8 +137,8 @@ export function drawCandy(
       width: tile,
       height: tile,
       radius: tile * 0.2,
-      color: k.rgb(CASE_FILL[0], CASE_FILL[1], CASE_FILL[2]),
-      outline: { width: Math.max(1, tile * 0.06), color: k.rgb(CASE_OUTLINE[0], CASE_OUTLINE[1], CASE_OUTLINE[2]) },
+      color: rgb(k, CASE_FILL[0], CASE_FILL[1], CASE_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.06), color: rgb(k, CASE_OUTLINE[0], CASE_OUTLINE[1], CASE_OUTLINE[2]) },
     });
     // the trapped item peeking out
     k.drawText({ text: "🐻", pos: k.vec2(x, y - tile * 0.04), size: tile * 0.5, anchor: "center", color: white });
@@ -132,7 +148,7 @@ export function drawCandy(
         pos: k.vec2(x + off - tile * 0.02, y - half * 0.78),
         width: tile * 0.04,
         height: tile * 0.9,
-        color: k.rgb(CASE_OUTLINE[0], CASE_OUTLINE[1], CASE_OUTLINE[2]),
+        color: rgb(k, CASE_OUTLINE[0], CASE_OUTLINE[1], CASE_OUTLINE[2]),
         opacity: 0.8,
       });
     }
@@ -147,8 +163,8 @@ export function drawCandy(
       width: tile,
       height: tile,
       radius: tile * 0.3,
-      color: k.rgb(GUM_FILL[0], GUM_FILL[1], GUM_FILL[2]),
-      outline: { width: Math.max(1, tile * 0.06), color: k.rgb(GUM_OUTLINE[0], GUM_OUTLINE[1], GUM_OUTLINE[2]) },
+      color: rgb(k, GUM_FILL[0], GUM_FILL[1], GUM_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.06), color: rgb(k, GUM_OUTLINE[0], GUM_OUTLINE[1], GUM_OUTLINE[2]) },
     });
     // a glossy highlight blob
     k.drawCircle({
@@ -168,8 +184,8 @@ export function drawCandy(
       width: tile,
       height: tile,
       radius: tile * 0.16,
-      color: k.rgb(BLOCKER_FILL[0], BLOCKER_FILL[1], BLOCKER_FILL[2]),
-      outline: { width: Math.max(1, tile * 0.05), color: k.rgb(90, 90, 100) },
+      color: rgb(k, BLOCKER_FILL[0], BLOCKER_FILL[1], BLOCKER_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.05), color: rgb(k, 90, 90, 100) },
     });
     k.drawText({
       text: BLOCKER_EMOJI,
@@ -190,8 +206,8 @@ export function drawCandy(
       width: tile,
       height: tile,
       radius: tile * 0.24,
-      color: k.rgb(INGREDIENT_FILL[0], INGREDIENT_FILL[1], INGREDIENT_FILL[2]),
-      outline: { width: Math.max(1, tile * 0.05), color: k.rgb(214, 130, 80) },
+      color: rgb(k, INGREDIENT_FILL[0], INGREDIENT_FILL[1], INGREDIENT_FILL[2]),
+      outline: { width: Math.max(1, tile * 0.05), color: rgb(k, 214, 130, 80) },
     });
     k.drawText({
       text: BURGER_PARTS[ingredientKind % BURGER_PARTS.length],
@@ -213,8 +229,8 @@ export function drawCandy(
     width: tile,
     height: tile,
     radius: tile * 0.24,
-    color: k.rgb(fill[0], fill[1], fill[2]),
-    outline: { width: Math.max(1, tile * 0.04), color: k.rgb(255, 255, 255) },
+    color: rgb(k, fill[0], fill[1], fill[2]),
+    outline: { width: Math.max(1, tile * 0.04), color: rgb(k, 255, 255, 255) },
   });
 
   if (isBomb) {
@@ -251,9 +267,9 @@ export function drawCandy(
       width: tile,
       height: tile,
       radius: tile * 0.24,
-      color: k.rgb(FROST_FILL[0], FROST_FILL[1], FROST_FILL[2]),
+      color: rgb(k, FROST_FILL[0], FROST_FILL[1], FROST_FILL[2]),
       opacity: 0.6,
-      outline: { width: Math.max(2, tile * 0.07), color: k.rgb(FROST_OUTLINE[0], FROST_OUTLINE[1], FROST_OUTLINE[2]) },
+      outline: { width: Math.max(2, tile * 0.07), color: rgb(k, FROST_OUTLINE[0], FROST_OUTLINE[1], FROST_OUTLINE[2]) },
     });
     k.drawText({ text: "❄️", pos: k.vec2(x, y), size: tile * 0.5, anchor: "center", color: white });
   }
@@ -266,7 +282,7 @@ function drawStripes(
   half: number,
   horizontal: boolean,
 ) {
-  const white = k.rgb(255, 255, 255);
+  const white = rgb(k, 255, 255, 255);
   for (const off of [-half * 0.55, half * 0.55]) {
     if (horizontal) {
       k.drawRect({
@@ -305,14 +321,14 @@ function drawHitPips(
     k.drawCircle({
       pos: k.vec2(startX + i * gap, y),
       radius: pipR,
-      color: k.rgb(color[0], color[1], color[2]),
+      color: rgb(k, color[0], color[1], color[2]),
     });
   }
 }
 
 /** Candy-wrapper look: four white corner brackets framing the tile. */
 function drawWrapper(k: KAPLAYCtx, x: number, y: number, half: number) {
-  const white = k.rgb(255, 255, 255);
+  const white = rgb(k, 255, 255, 255);
   const L = half * 0.5; // bracket arm length
   const t = Math.max(2, half * 0.16); // bracket thickness
   const e = half * 0.72; // distance from centre to the bracket corner
@@ -350,7 +366,7 @@ function drawColoringSwirl(k: KAPLAYCtx, x: number, y: number, half: number) {
       color: hsv(k, (i / 8) * 360),
     });
   }
-  k.drawCircle({ pos: k.vec2(x, y), radius: half * 0.22, color: k.rgb(255, 255, 255), opacity: 0.85 });
+  k.drawCircle({ pos: k.vec2(x, y), radius: half * 0.22, color: rgb(k, 255, 255, 255), opacity: 0.85 });
 }
 
 function drawBombRing(k: KAPLAYCtx, x: number, y: number, r: number) {
@@ -363,7 +379,7 @@ function drawBombRing(k: KAPLAYCtx, x: number, y: number, r: number) {
       color: hsv(k, hue),
     });
   }
-  k.drawText({ text: "💣", pos: k.vec2(x, y), size: r * 0.9, anchor: "center", color: k.rgb(255, 255, 255) });
+  k.drawText({ text: "💣", pos: k.vec2(x, y), size: r * 0.9, anchor: "center", color: rgb(k, 255, 255, 255) });
 }
 
 function hsv(k: KAPLAYCtx, h: number) {
@@ -378,5 +394,5 @@ function hsv(k: KAPLAYCtx, h: number) {
   else if (h < 240) [r, g, b] = [0, x, c];
   else if (h < 300) [r, g, b] = [x, 0, c];
   else [r, g, b] = [c, 0, x];
-  return k.rgb(r * 255, g * 255, b * 255);
+  return rgb(k, r * 255, g * 255, b * 255);
 }

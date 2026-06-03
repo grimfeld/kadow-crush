@@ -1770,6 +1770,12 @@ export class GameView {
    * Centered single line that shrinks to fit `maxW` (down to a floor) so HUD and
    * overlay labels never leak out of their panel on narrow phone screens.
    */
+  // Memo for fitText's shrink-to-fit search: the result size for a given
+  // (text, size, maxW) never changes between frames, but formatText (glyph
+  // shaping/measuring) is costly, so a static HUD label was re-measuring up to
+  // 8× every frame. Cache the solved size and skip the loop on repeats.
+  private fitTextCache = new Map<string, number>();
+
   private fitText(
     text: string,
     cx: number,
@@ -1779,11 +1785,18 @@ export class GameView {
     color: ReturnType<KAPLAYCtx["rgb"]>,
   ) {
     const k = this.k;
-    let s = size;
-    for (let i = 0; i < 8; i++) {
-      const m = k.formatText({ text, size: s, pos: k.vec2(0, 0) });
-      if (m.width <= maxW || s <= size * 0.5) break;
-      s *= 0.9;
+    const key = `${text}|${size}|${maxW}`;
+    let s = this.fitTextCache.get(key);
+    if (s === undefined) {
+      s = size;
+      for (let i = 0; i < 8; i++) {
+        const m = k.formatText({ text, size: s, pos: k.vec2(0, 0) });
+        if (m.width <= maxW || s <= size * 0.5) break;
+        s *= 0.9;
+      }
+      // Bound the cache so unbounded score/count strings can't grow it forever.
+      if (this.fitTextCache.size > 256) this.fitTextCache.clear();
+      this.fitTextCache.set(key, s);
     }
     k.drawText({
       text,

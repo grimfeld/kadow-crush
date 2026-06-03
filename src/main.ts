@@ -5,10 +5,14 @@ const canvas = document.getElementById("game") as HTMLCanvasElement;
 
 // No fixed width/height → Kaplay sizes to the canvas element, which CSS pins to
 // the full viewport. pixelDensity makes the backing store DPR-aware so the
-// procedural shapes stay crisp on retina/mobile screens.
+// procedural shapes stay crisp on retina/mobile screens — but we cap it at 2,
+// because a DPR-3 phone would otherwise render 9× the pixels every frame (the
+// main cause of the device heating up). 2× is already visually crisp.
+// maxFPS pins the loop to 60 so 120 Hz phones don't do double the GPU work.
 const k = kaplay({
   canvas,
-  pixelDensity: window.devicePixelRatio || 1,
+  pixelDensity: Math.min(window.devicePixelRatio || 1, 2),
+  maxFPS: 60,
   touchToMouse: true,
   background: [173, 216, 240],
   global: false,

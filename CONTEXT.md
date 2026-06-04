@@ -146,3 +146,25 @@ A Candy encased in frost. It keeps a real Colour but never Matches and cannot be
 
 ### Gift Box
 An immovable crate seated on the bottom row that blocks gravity like a Blocker. Each Match in an adjacent Cell knocks one off its hit counter (shown as pips); at zero the crate **cracks open** into a falling Ingredient (a burger part), then collected at the bottom like any Ingredient.
+
+## Mechanics
+
+The individual mechanics above (Jelly, Blocker, Gum, …) group into three **families** by behavioural shape. A family is a seam: a Challenge declares which mechanics it uses as configuration, and the Board asks each one for its own rules rather than enumerating kinds in place. (Architecture decision pending — see the candidate-1 design notes.)
+
+### Mechanic
+Any per-Challenge rule layered onto the base match-3 game. Each Mechanic owns its own placement, behaviour, progress count, and a view-agnostic render description. A Challenge lists the Mechanics it uses; the **Mechanic Registry** maps each declared kind to its implementation. _Avoid_: obstacle (only the FloorObstacle family blocks gravity), modifier, feature.
+
+### FloorObstacle
+The family of grid-occupant Mechanics that block gravity and react to an adjacent Match: **Blocker, Bubble Gum, Gift Box, Cased Item, Chocolate**. Each is immovable, candies stack on it, a blast passes over it, and an orthogonally-adjacent Match triggers its effect (chip a layer, crack open, pop, free, or clear). They share one interface.
+
+### Coating
+The family of cell-bound Mechanics carried in a parallel array, not as a grid occupant: **Jelly** and **Jam**. A Coating sits under/independent of the Candy on its Cell, is removed or grown by Matches over it, may **spread** between Moves, and reports a remaining/covered count for its Objective.
+
+### Spawner
+The family of refill-time Mechanics that inject pieces as columns refill: the **Generator** (every Nth emitted Candy becomes a Special) and **Avalanche** (entry Cells rain Ingredients). A Spawner acts only during spawn, never on the resting board.
+
+### BoardOps
+The narrow context the Board hands a Mechanic so it can act without seeing the Board's internals: read the grid and bounds, emit a Step, and fire a capped blast (for Gum's pop). The Board keeps cascade ordering, gravity, and the per-Move firing set private behind it. _Avoid_: passing the whole Board.
+
+### Tile Visual
+The view-agnostic render description a Mechanic returns for the view to draw: a semantic style token, an emoji, a remaining-hits pip count, and an overlay style — never raw colours or Kaplay calls. The view maps the style token to its theme, keeping the core free of rendering (per the pure-core/thin-view split). _Avoid_: sprite, draw call.

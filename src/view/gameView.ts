@@ -3,7 +3,11 @@
 // requests. Input is locked while a Resolution animates.
 
 import type { KAPLAYCtx } from "kaplay";
-import type { ChallengeConfig } from "../core/config.ts";
+import {
+  DEFAULT_CHALLENGE,
+  SHAPE_TEMPLATES,
+  type ChallengeConfig,
+} from "../core/config.ts";
 import { Game } from "../core/game.ts";
 import type { Candy, Colour, Pos, SpecialType, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
@@ -77,6 +81,10 @@ export class GameView {
   private reference: ReferenceModal;
   // The challenge chosen on the menu, shown on the tutorial screen, started on Play.
   private pending: ChallengeConfig | null = null;
+  // Shape selector (menu chip): the forced ShapeTemplate id for the next
+  // "varied" Challenge, or null = Random (seed picks). Index -1 = Random,
+  // 0..N-1 = SHAPE_TEMPLATES[i].
+  private shapeIndex = -1;
   private game!: Game; // defined once a Challenge is picked
   private layout!: Layout; // defined once a Challenge is picked
   private sprites = new Map<number, Sprite>(); // candy id → sprite
@@ -314,11 +322,53 @@ export class GameView {
     return this.game.board.cols;
   }
 
-  /** Begin a Challenge from the menu: fresh seeded board, switch to play mode. */
-  startChallenge(cfg: ChallengeConfig) {
-    this.game = new Game(this.newSeed(), cfg);
+  /** Whether the active board has any Void cells (a non-rectangular shape). */
+  private boardHasVoids(): boolean {
+    return this.game.board.playableCellCount() < this.rows * this.cols;
+  }
+
+  /** The forced ShapeTemplate id from the selector, or undefined = Random. */
+  private get forcedShapeId(): string | undefined {
+    return this.shapeIndex >= 0 ? SHAPE_TEMPLATES[this.shapeIndex].id : undefined;
+  }
+
+  /** Selector chip label: "Random" or the chosen template id. */
+  get shapeLabel(): string {
+    return this.shapeIndex >= 0 ? SHAPE_TEMPLATES[this.shapeIndex].id : "Random";
+  }
+
+  /** Cycle the shape selector: Random → each template → Random. */
+  cycleShape() {
+    this.shapeIndex =
+      this.shapeIndex + 1 >= SHAPE_TEMPLATES.length ? -1 : this.shapeIndex + 1;
+  }
+
+  /**
+   * Dev/test hook: jump straight into Berry Sort forced to the given shape id,
+   * skipping the menu + tutorial. Exposed on window in DEV builds for the e2e
+   * screenshot suite. A null id = Random (seeded pick). Pass a fixed `seed` to
+   * make the board layout reproducible (the e2e snapshots rely on this).
+   */
+  startShape(id: string | null, seed?: number) {
+    const i = id ? SHAPE_TEMPLATES.findIndex((t) => t.id === id) : -1;
+    this.shapeIndex = id ? (i >= 0 ? i : -1) : -1;
+    this.startChallenge(DEFAULT_CHALLENGE, seed);
+  }
+
+  /** Begin a Challenge from the menu: fresh seeded board, switch to play mode.
+   *  Honours the shape selector for "varied" Challenges. A fixed `seed` (dev/
+   *  test) makes the board reproducible; omitted = fresh entropy seed. */
+  startChallenge(cfg: ChallengeConfig, seed = this.newSeed()) {
+    this.game = new Game(seed, cfg, this.forcedShapeId);
     this.game.sugarCrushEnabled = this.sugarCrushOn;
-    this.layout = computeLayout(this.k.width(), this.k.height(), cfg.rows, cfg.cols);
+    // Layout from the REAL board dims (a varied/forced shape may differ from the
+    // config's nominal rows×cols).
+    this.layout = computeLayout(
+      this.k.width(),
+      this.k.height(),
+      this.game.board.rows,
+      this.game.board.cols,
+    );
     this.selected = null;
     this.dragStart = null;
     this.aborted = false;
@@ -941,6 +991,7 @@ export class GameView {
     const col = Math.floor((px - this.layout.originX) / this.layout.cell);
     const row = Math.floor((py - this.layout.originY) / this.layout.cell);
     if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return null;
+    if (this.game.board.isVoid(row, col)) return null; // Voids aren't tappable
     return { row, col };
   }
 
@@ -979,6 +1030,13 @@ export class GameView {
         if (this.menu.hitMusic(p.x, p.y)) {
           playSound("swap");
           this.music.cycle();
+          this.menuDrag = null;
+          return;
+        }
+        // shape selector chip — cycle the forced Board Shape for the next play
+        if (this.menu.hitShape(p.x, p.y)) {
+          playSound("swap");
+          this.cycleShape();
           this.menuDrag = null;
           return;
         }
@@ -1198,7 +1256,7 @@ export class GameView {
 
   draw() {
     if (this.mode === "menu") {
-      this.menu.draw(this.music.label);
+      this.menu.draw(this.music.label, this.shapeLabel);
       this.reference.draw();
       this.particles.draw();
       return;
@@ -1219,24 +1277,45 @@ export class GameView {
       ],
     });
 
-    // soft rounded board panel behind the whole grid
+    // soft rounded board panel behind the grid. For a rectangular board this is
+    // one rounded rect over the whole bbox; for a shaped board (with Voids) a
+    // single bbox rect would cover the void corners, so we back each playable
+    // Cell with a slightly-larger rounded tile instead — the panel then traces
+    // the board's true outline. (ADR-0006)
     const pad = this.layout.cell * 0.22;
-    k.drawRect({
-      pos: k.vec2(this.layout.originX - pad, this.layout.originY - pad),
-      width: this.layout.boardW + pad * 2,
-      height: this.layout.boardH + pad * 2,
-      radius: this.layout.cell * 0.3,
-      color: k.rgb(GRID_PANEL[0], GRID_PANEL[1], GRID_PANEL[2]),
-      opacity: 0.55,
-      outline: {
-        width: 4,
-        color: k.rgb(
-          GRID_PANEL_BORDER[0],
-          GRID_PANEL_BORDER[1],
-          GRID_PANEL_BORDER[2],
-        ),
-      },
-    });
+    if (this.boardHasVoids()) {
+      const tile = this.layout.cell + pad; // overlap so neighbours merge
+      for (let r = 0; r < this.rows; r++)
+        for (let c = 0; c < this.cols; c++) {
+          if (this.game.board.isVoid(r, c)) continue;
+          const { x, y } = cellCenter(this.layout, r, c);
+          k.drawRect({
+            pos: k.vec2(x - tile / 2, y - tile / 2),
+            width: tile,
+            height: tile,
+            radius: this.layout.cell * 0.3,
+            color: k.rgb(GRID_PANEL[0], GRID_PANEL[1], GRID_PANEL[2]),
+            opacity: 0.55,
+          });
+        }
+    } else {
+      k.drawRect({
+        pos: k.vec2(this.layout.originX - pad, this.layout.originY - pad),
+        width: this.layout.boardW + pad * 2,
+        height: this.layout.boardH + pad * 2,
+        radius: this.layout.cell * 0.3,
+        color: k.rgb(GRID_PANEL[0], GRID_PANEL[1], GRID_PANEL[2]),
+        opacity: 0.55,
+        outline: {
+          width: 4,
+          color: k.rgb(
+            GRID_PANEL_BORDER[0],
+            GRID_PANEL_BORDER[1],
+            GRID_PANEL_BORDER[2],
+          ),
+        },
+      });
+    }
 
     // generator machines above their columns
     const cell = this.layout.cell;
@@ -1256,9 +1335,11 @@ export class GameView {
       k.drawText({ text: "⚙️", pos: k.vec2(cx, my), size: cell * 0.34, anchor: "center", color: this.white });
     }
 
-    // cell backgrounds + jelly coating
+    // cell backgrounds + jelly coating (Voids are outside the shape — skip them
+    // so the board reads as its true outline, ADR-0006)
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
+        if (this.game.board.isVoid(r, c)) continue;
         const { x, y } = cellCenter(this.layout, r, c);
         drawCellBg(k, x, y, cell);
         const layers = this.viewJelly[r]?.[c] ?? 0;
@@ -1292,8 +1373,8 @@ export class GameView {
         }
       }
 
-    // selection highlight
-    if (this.selected) {
+    // selection highlight (never on a Void)
+    if (this.selected && !this.game.board.isVoid(this.selected.row, this.selected.col)) {
       const { x, y } = cellCenter(this.layout, this.selected.row, this.selected.col);
       k.drawRect({
         pos: k.vec2(x - this.layout.cell / 2, y - this.layout.cell / 2),
@@ -1313,6 +1394,7 @@ export class GameView {
       hintBounce = Math.max(0, Math.sin(phase)) * this.layout.cell * 0.12;
       const glow = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(phase));
       for (const p of this.hint) {
+        if (this.game.board.isVoid(p.row, p.col)) continue;
         const { x, y } = cellCenter(this.layout, p.row, p.col);
         k.drawRect({
           pos: k.vec2(x - cell / 2, y - cell / 2),

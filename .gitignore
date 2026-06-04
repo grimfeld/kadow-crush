@@ -3,3 +3,12 @@ dist
 *.local
 .DS_Store
 shot-*.png
+
+# Playwright e2e: ignore run output, but COMMIT the screenshot baselines
+# (e2e/**/*-snapshots/) so the shape suite has something to diff against.
+test-results
+playwright-report
+.playwright
+
+# Claude Code harness scratch (scheduled-task locks, etc.)
+.claude

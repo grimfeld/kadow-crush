@@ -8,7 +8,13 @@ A match-3 puzzle game (Candy Crush clone) built with Kaplay + TypeScript. Mobile
 The grid of cells where play happens. Holds Candies in a fixed number of rows and columns.
 
 ### Cell
-A single position on the Board, addressed by row and column. Holds exactly one Candy (or is empty mid-resolution).
+A single position on the Board, addressed by row and column. Holds exactly one Candy (or is empty mid-resolution). A Cell may instead be a **Void** (outside the playable shape).
+
+### Board Shape
+The playable outline of the Board within its rows×cols bounding box. A rectangular Board fills the whole box; a non-rectangular Board (diamond, cross, hourglass, …) marks the off-shape Cells as **Voids**. The shape — and the bounding-box size — is chosen per session from a fixed set of **shape templates** by the seed, so a Challenge varies its board shape and size every time it is played (it is not authored per Challenge).
+
+### Void
+A Cell permanently outside the playable shape. It never holds a Candy, never Matches, never clears, and is never drawn or tappable — it is not a Blocker (which is a clearable Candy occupant) but a structural absence. Gravity treats a Void as **pass-through air**: a Candy above a Void falls straight through it to the next playable Cell below, and refill never spawns a Candy into a Void. The Void mask is fixed for the session, set when the Board is built. _Avoid_: hole, gap, blank (use Void).
 
 ### Candy
 A coloured game piece occupying a Cell. Has a Colour. May also be a Special.
@@ -69,7 +75,10 @@ At level start: the Board is filled with random Colours such that there are no p
 ## Challenge Grids
 
 ### Challenge
-One playable definition on the level-select menu: a board size, a colour count, a move budget, an Objective, and any board mechanics (Jelly, Blockers, Ingredients). The set of Challenges is fixed; the Board *layout* of a Challenge is generated from a fresh random seed each time it is played, so the same Challenge plays differently every session while its identity and difficulty stay stable.
+One playable definition on the level-select menu: a board size, a colour count, a move budget, an Objective, and any board mechanics (Jelly, Blockers, Ingredients). The set of Challenges is fixed; the Board *layout* of a Challenge is generated from a fresh random seed each time it is played, so the same Challenge plays differently every session while its identity and difficulty stay stable. A Challenge may also vary its **Board Shape** and bounding-box size per session (see Board Shape); when it does, its size-dependent Objective values (quota, move budget) scale to the playable-Cell count so difficulty stays roughly constant across shapes.
+
+### Hidden Challenge
+A Challenge present in the registry but kept off the Level Select menu (`hidden` flag). Used to park modes without deleting their code — still constructible by id and exercised by tests. The shipped menu currently surfaces only **Berry Sort**; every other mode is a Hidden Challenge.
 
 ### Level Select
 The menu screen listing the Challenges as a 2-column grid of fixed-height cards. The grid scrolls vertically (wheel or drag) when it overflows the viewport, with a faint scrollbar; the title and music chip stay fixed above it. The player picks one to play and returns to it on Win or Loss.

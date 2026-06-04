@@ -35,12 +35,29 @@ export class Game {
   sugarCrushEnabled = true;
   private rng: Rng;
 
-  constructor(seed: number, cfg: ChallengeConfig = DEFAULT_CHALLENGE) {
+  constructor(
+    seed: number,
+    cfg: ChallengeConfig = DEFAULT_CHALLENGE,
+    /** Force a Board Shape by id (dev/test shape selector). See Board. */
+    forcedShapeId?: string,
+  ) {
     this.cfg = cfg;
     this.rng = makeRng(seed);
-    this.board = new Board(this.rng, cfg);
-    this.movesLeft = cfg.moves;
+    this.board = new Board(this.rng, cfg, forcedShapeId);
+    // Size-scaled objective (ADR-0006): when the Challenge varies its board, the
+    // move budget and collect-colours quota scale to the session's playable-cell
+    // count, anchored to the config's nominal rows×cols, so difficulty stays
+    // roughly even across shapes. A floor of 1 keeps a tiny shape playable.
+    this.movesLeft = Math.max(1, Math.round(cfg.moves * this.sizeScale()));
     this.objective = this.pickObjective();
+  }
+
+  /** Playable-cell count ÷ nominal cell count, or 1 when not size-scaling. */
+  private sizeScale(): number {
+    if (!this.cfg.scaleToSize) return 1;
+    const nominal = this.cfg.rows * this.cfg.cols;
+    if (nominal <= 0) return 1;
+    return this.board.playableCellCount() / nominal;
   }
 
   /**
@@ -59,9 +76,11 @@ export class Game {
       [all[i], all[j]] = [all[j], all[i]];
     }
     const targets = all.slice(0, spec.targetCount);
+    // Scale the per-colour quota to board size (ADR-0006), floored at 1.
+    const quota = Math.max(1, Math.round(spec.quota * this.sizeScale()));
     return {
       targets,
-      quota: spec.quota,
+      quota,
       collected: new Map(targets.map((c) => [c, 0])),
     };
   }

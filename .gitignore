@@ -9,3 +9,6 @@ shot-*.png
 test-results
 playwright-report
 .playwright
+
+# Claude Code harness scratch (scheduled-task locks, etc.)
+.claude

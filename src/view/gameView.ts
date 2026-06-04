@@ -3,7 +3,11 @@
 // requests. Input is locked while a Resolution animates.
 
 import type { KAPLAYCtx } from "kaplay";
-import type { ChallengeConfig } from "../core/config.ts";
+import {
+  DEFAULT_CHALLENGE,
+  SHAPE_TEMPLATES,
+  type ChallengeConfig,
+} from "../core/config.ts";
 import { Game } from "../core/game.ts";
 import type { Candy, Colour, Pos, SpecialType, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
@@ -77,6 +81,10 @@ export class GameView {
   private reference: ReferenceModal;
   // The challenge chosen on the menu, shown on the tutorial screen, started on Play.
   private pending: ChallengeConfig | null = null;
+  // Shape selector (menu chip): the forced ShapeTemplate id for the next
+  // "varied" Challenge, or null = Random (seed picks). Index -1 = Random,
+  // 0..N-1 = SHAPE_TEMPLATES[i].
+  private shapeIndex = -1;
   private game!: Game; // defined once a Challenge is picked
   private layout!: Layout; // defined once a Challenge is picked
   private sprites = new Map<number, Sprite>(); // candy id → sprite
@@ -314,11 +322,48 @@ export class GameView {
     return this.game.board.cols;
   }
 
-  /** Begin a Challenge from the menu: fresh seeded board, switch to play mode. */
-  startChallenge(cfg: ChallengeConfig) {
-    this.game = new Game(this.newSeed(), cfg);
+  /** The forced ShapeTemplate id from the selector, or undefined = Random. */
+  private get forcedShapeId(): string | undefined {
+    return this.shapeIndex >= 0 ? SHAPE_TEMPLATES[this.shapeIndex].id : undefined;
+  }
+
+  /** Selector chip label: "Random" or the chosen template id. */
+  get shapeLabel(): string {
+    return this.shapeIndex >= 0 ? SHAPE_TEMPLATES[this.shapeIndex].id : "Random";
+  }
+
+  /** Cycle the shape selector: Random → each template → Random. */
+  cycleShape() {
+    this.shapeIndex =
+      this.shapeIndex + 1 >= SHAPE_TEMPLATES.length ? -1 : this.shapeIndex + 1;
+  }
+
+  /**
+   * Dev/test hook: jump straight into Berry Sort forced to the given shape id,
+   * skipping the menu + tutorial. Exposed on window in DEV builds for the e2e
+   * screenshot suite. A null id = Random (seeded pick). Pass a fixed `seed` to
+   * make the board layout reproducible (the e2e snapshots rely on this).
+   */
+  startShape(id: string | null, seed?: number) {
+    const i = id ? SHAPE_TEMPLATES.findIndex((t) => t.id === id) : -1;
+    this.shapeIndex = id ? (i >= 0 ? i : -1) : -1;
+    this.startChallenge(DEFAULT_CHALLENGE, seed);
+  }
+
+  /** Begin a Challenge from the menu: fresh seeded board, switch to play mode.
+   *  Honours the shape selector for "varied" Challenges. A fixed `seed` (dev/
+   *  test) makes the board reproducible; omitted = fresh entropy seed. */
+  startChallenge(cfg: ChallengeConfig, seed = this.newSeed()) {
+    this.game = new Game(seed, cfg, this.forcedShapeId);
     this.game.sugarCrushEnabled = this.sugarCrushOn;
-    this.layout = computeLayout(this.k.width(), this.k.height(), cfg.rows, cfg.cols);
+    // Layout from the REAL board dims (a varied/forced shape may differ from the
+    // config's nominal rows×cols).
+    this.layout = computeLayout(
+      this.k.width(),
+      this.k.height(),
+      this.game.board.rows,
+      this.game.board.cols,
+    );
     this.selected = null;
     this.dragStart = null;
     this.aborted = false;
@@ -983,6 +1028,13 @@ export class GameView {
           this.menuDrag = null;
           return;
         }
+        // shape selector chip — cycle the forced Board Shape for the next play
+        if (this.menu.hitShape(p.x, p.y)) {
+          playSound("swap");
+          this.cycleShape();
+          this.menuDrag = null;
+          return;
+        }
         // begin a press: it becomes a scroll-drag if the finger moves, else a
         // tap-to-select on release.
         this.menuDrag = { startY: p.y, lastY: p.y, moved: false };
@@ -1199,7 +1251,7 @@ export class GameView {
 
   draw() {
     if (this.mode === "menu") {
-      this.menu.draw(this.music.label);
+      this.menu.draw(this.music.label, this.shapeLabel);
       this.reference.draw();
       this.particles.draw();
       return;

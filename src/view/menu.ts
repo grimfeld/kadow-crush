@@ -70,6 +70,7 @@ export class MenuScreen {
   private cards: CardRect[] = [];
   private helpRect = { x: 0, y: 0, w: 0, h: 0 };
   private musicRect = { x: 0, y: 0, w: 0, h: 0 };
+  private shapeRect = { x: 0, y: 0, w: 0, h: 0 };
   // Vertical scroll offset of the card grid (px), clamped to [0, maxScroll].
   private scrollY = 0;
   private maxScroll = 0;
@@ -113,8 +114,17 @@ export class MenuScreen {
     return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
   }
 
-  /** @param musicLabel current music selection label ("Off" or a track name). */
-  draw(musicLabel: string) {
+  /** Whether (px,py) hits the shape selector chip (caller cycles the shape). */
+  hitShape(px: number, py: number): boolean {
+    const r = this.shapeRect;
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+
+  /**
+   * @param musicLabel current music selection label ("Off" or a track name).
+   * @param shapeLabel current shape-selector label ("Random" or a template id).
+   */
+  draw(musicLabel: string, shapeLabel: string) {
     const k = this.k;
     const W = k.width();
     const H = k.height();
@@ -154,8 +164,14 @@ export class MenuScreen {
     // Music chip (top-right) — tap to cycle tracks / off.
     this.drawMusicChip(musicLabel, W, H, dark, accent);
 
-    // 2-column grid of fixed-height cards; scrolls when it overflows.
-    const top = titleY + Math.min(64, H * 0.11);
+    // Shape selector chip (centred, below the subtitle) — tap to cycle the
+    // forced Board Shape for the next play (ADR-0006 dev/test aid).
+    const shapeChipY = titleY + Math.min(58, H * 0.1);
+    const shapeChipH = this.drawShapeChip(shapeLabel, W, shapeChipY, dark, accent);
+
+    // 2-column grid of fixed-height cards; scrolls when it overflows. Start
+    // below the shape chip.
+    const top = shapeChipY + shapeChipH + Math.min(16, H * 0.02);
     const sideX = W * 0.05;
     const colGap = W * 0.03;
     const rowGap = Math.max(8, H * 0.014);
@@ -256,6 +272,44 @@ export class MenuScreen {
       color: dark,
       anchor: "center",
     });
+  }
+
+  /** Centred shape-selector chip. Returns its height (for grid layout). */
+  private drawShapeChip(
+    label: string,
+    W: number,
+    y: number,
+    dark: ReturnType<KAPLAYCtx["rgb"]>,
+    accent: ReturnType<KAPLAYCtx["rgb"]>,
+  ): number {
+    const k = this.k;
+    const h = Math.max(26, Math.min(34, W * 0.072));
+    const text = `Shape: ${label} ▸`;
+    const size = h * 0.46;
+    const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
+    const w = Math.min(W * 0.7, m.width + h * 1.1);
+    const x = (W - w) / 2;
+    this.shapeRect = { x, y, w, h };
+    k.drawRect({
+      pos: k.vec2(x, y),
+      width: w,
+      height: h,
+      radius: h / 2,
+      color: k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
+      opacity: 0.95,
+      outline: {
+        width: 2,
+        color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]),
+      },
+    });
+    k.drawText({
+      text,
+      pos: k.vec2(x + w / 2, y + h / 2),
+      size,
+      color: label === "Random" ? dark : accent,
+      anchor: "center",
+    });
+    return h;
   }
 
   private drawMusicChip(

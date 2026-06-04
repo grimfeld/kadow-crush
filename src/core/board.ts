@@ -85,10 +85,16 @@ export class Board {
   constructor(
     private rng: Rng,
     cfg: ChallengeConfig = DEFAULT_CHALLENGE,
+    /**
+     * Force a specific ShapeTemplate by id (dev/test shape selector). Overrides
+     * the seeded pick for "varied" Challenges; ignored if the id is unknown.
+     */
+    forcedShapeId?: string,
   ) {
     // Pick the session's Board Shape: a "varied" Challenge draws a template from
-    // the curated set (by seed); otherwise the fixed cfg rectangle. (ADR-0006.)
-    const shape = this.pickShape(cfg);
+    // the curated set (by seed, or a forced id); otherwise the fixed cfg
+    // rectangle. (ADR-0006.)
+    const shape = this.pickShape(cfg, forcedShapeId);
     this.rows = shape.rows;
     this.cols = shape.cols;
     this.void = this.buildVoid(shape);
@@ -240,9 +246,16 @@ export class Board {
     return n;
   }
 
-  /** Choose this session's ShapeTemplate (seeded for "varied" Challenges). */
-  private pickShape(cfg: ChallengeConfig): ShapeTemplate {
-    if (cfg.shape === "varied") return this.rng.pick(SHAPE_TEMPLATES);
+  /** Choose this session's ShapeTemplate (seeded for "varied" Challenges, or a
+   *  forced id from the dev shape selector). */
+  private pickShape(cfg: ChallengeConfig, forcedShapeId?: string): ShapeTemplate {
+    if (cfg.shape === "varied") {
+      if (forcedShapeId) {
+        const forced = SHAPE_TEMPLATES.find((t) => t.id === forcedShapeId);
+        if (forced) return forced;
+      }
+      return this.rng.pick(SHAPE_TEMPLATES);
+    }
     return { id: cfg.id, rows: cfg.rows, cols: cfg.cols };
   }
 

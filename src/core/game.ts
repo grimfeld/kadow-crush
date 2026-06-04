@@ -35,10 +35,15 @@ export class Game {
   sugarCrushEnabled = true;
   private rng: Rng;
 
-  constructor(seed: number, cfg: ChallengeConfig = DEFAULT_CHALLENGE) {
+  constructor(
+    seed: number,
+    cfg: ChallengeConfig = DEFAULT_CHALLENGE,
+    /** Force a Board Shape by id (dev/test shape selector). See Board. */
+    forcedShapeId?: string,
+  ) {
     this.cfg = cfg;
     this.rng = makeRng(seed);
-    this.board = new Board(this.rng, cfg);
+    this.board = new Board(this.rng, cfg, forcedShapeId);
     // Size-scaled objective (ADR-0006): when the Challenge varies its board, the
     // move budget and collect-colours quota scale to the session's playable-cell
     // count, anchored to the config's nominal rows×cols, so difficulty stays

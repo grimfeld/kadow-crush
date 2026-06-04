@@ -54,11 +54,16 @@ describe("challenge config drives the board", () => {
 });
 
 describe("score objective", () => {
-  it("default Game is collect-colours with the Berry Sort budget", () => {
+  it("default Game is collect-colours (Berry Sort), budget scales to board size", () => {
+    // Berry Sort now varies its shape/size and scales quota/moves to the
+    // playable-cell count (ADR-0006), so the budget is no longer a fixed 24 —
+    // assert the kind/targets, and that the scaled budget is sane (≤ nominal 24
+    // and at least the floor of 1).
     const game = new Game(123);
     expect(game.cfg.objective.kind).toBe("collect-colours");
-    expect(game.movesLeft).toBe(24);
     expect(game.objective.targets.length).toBe(2);
+    expect(game.movesLeft).toBeGreaterThanOrEqual(1);
+    expect(game.movesLeft).toBeLessThanOrEqual(24);
   });
 
   it("a score Game has no colour targets and starts at zero", () => {

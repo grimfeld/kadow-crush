@@ -941,6 +941,7 @@ export class GameView {
     const col = Math.floor((px - this.layout.originX) / this.layout.cell);
     const row = Math.floor((py - this.layout.originY) / this.layout.cell);
     if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return null;
+    if (this.game.board.isVoid(row, col)) return null; // Voids aren't tappable
     return { row, col };
   }
 
@@ -1256,9 +1257,11 @@ export class GameView {
       k.drawText({ text: "⚙️", pos: k.vec2(cx, my), size: cell * 0.34, anchor: "center", color: this.white });
     }
 
-    // cell backgrounds + jelly coating
+    // cell backgrounds + jelly coating (Voids are outside the shape — skip them
+    // so the board reads as its true outline, ADR-0006)
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
+        if (this.game.board.isVoid(r, c)) continue;
         const { x, y } = cellCenter(this.layout, r, c);
         drawCellBg(k, x, y, cell);
         const layers = this.viewJelly[r]?.[c] ?? 0;

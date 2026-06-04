@@ -5,8 +5,10 @@
 
 import {
   DEFAULT_CHALLENGE,
+  SHAPE_TEMPLATES,
   type ChallengeConfig,
   type JellySpec,
+  type ShapeTemplate,
 } from "./config.ts";
 import type { Rng } from "./rng.ts";
 import type {
@@ -41,6 +43,12 @@ export class Board {
   readonly jellySpreads: boolean;
   /** Jam coating per cell (Spread-the-Jam). Parallel to `grid`. */
   jam: boolean[][];
+  /**
+   * Board Shape mask: true ⇒ the Cell is a Void (outside the playable outline —
+   * never a Candy, never matches, never drawn/tapped). Parallel to `grid`, fixed
+   * for the session. All-false for a rectangular Board. (ADR-0006.)
+   */
+  readonly void: boolean[][];
   /** Ingredients (burger parts) that have reached the bottom and left. */
   ingredientsCollected = 0;
   /** Which burger parts have been collected (parallel record for the HUD). */
@@ -78,8 +86,12 @@ export class Board {
     private rng: Rng,
     cfg: ChallengeConfig = DEFAULT_CHALLENGE,
   ) {
-    this.rows = cfg.rows;
-    this.cols = cfg.cols;
+    // Pick the session's Board Shape: a "varied" Challenge draws a template from
+    // the curated set (by seed); otherwise the fixed cfg rectangle. (ADR-0006.)
+    const shape = this.pickShape(cfg);
+    this.rows = shape.rows;
+    this.cols = shape.cols;
+    this.void = this.buildVoid(shape);
     this.colourCount = cfg.colourCount;
     this.ingredientCount = cfg.ingredients ?? 0;
     this.blockerCount = cfg.blockers ?? 0;
@@ -213,6 +225,34 @@ export class Board {
 
   private inBounds(row: number, col: number): boolean {
     return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
+  }
+
+  /** Whether a Cell is a Void (outside the playable Board Shape). (ADR-0006.) */
+  isVoid(row: number, col: number): boolean {
+    return !!this.void[row]?.[col];
+  }
+
+  /** Count of playable (non-Void) Cells — drives size-scaled objectives. */
+  playableCellCount(): number {
+    let n = 0;
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) if (!this.void[r][c]) n++;
+    return n;
+  }
+
+  /** Choose this session's ShapeTemplate (seeded for "varied" Challenges). */
+  private pickShape(cfg: ChallengeConfig): ShapeTemplate {
+    if (cfg.shape === "varied") return this.rng.pick(SHAPE_TEMPLATES);
+    return { id: cfg.id, rows: cfg.rows, cols: cfg.cols };
+  }
+
+  /** Build the Void mask from the template's `isVoid` test (all-false ⇒ rect). */
+  private buildVoid(shape: ShapeTemplate): boolean[][] {
+    return Array.from({ length: shape.rows }, (_, r) =>
+      Array.from({ length: shape.cols }, (_, c) =>
+        shape.isVoid ? shape.isVoid(r, c, shape.rows, shape.cols) : false,
+      ),
+    );
   }
 
   /** A candy that cannot be swapped by the player (Blocker, Frozen, or a sealed
@@ -441,23 +481,28 @@ export class Board {
     const grid: Grid = Array.from({ length: this.rows }, () =>
       Array<Candy | null>(this.cols).fill(null),
     );
+    // Colour of a placed candy, or null for a Void / not-yet-filled cell.
+    const col = (r: number, c: number): Colour | null =>
+      this.inBounds(r, c) ? (grid[r][c]?.colour ?? null) : null;
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
+        if (this.void[r][c]) continue; // Voids never hold a candy (ADR-0006)
         const banned = new Set<Colour>();
-        if (c >= 2 && grid[r][c - 1]!.colour === grid[r][c - 2]!.colour) {
-          banned.add(grid[r][c - 1]!.colour!);
+        if (c >= 2 && col(r, c - 1) !== null && col(r, c - 1) === col(r, c - 2)) {
+          banned.add(col(r, c - 1)!);
         }
-        if (r >= 2 && grid[r - 1][c]!.colour === grid[r - 2][c]!.colour) {
-          banned.add(grid[r - 1][c]!.colour!);
+        if (r >= 2 && col(r - 1, c) !== null && col(r - 1, c) === col(r - 2, c)) {
+          banned.add(col(r - 1, c)!);
         }
         // would this complete a 2×2 with the three cells up-left of it?
         if (
           r >= 1 &&
           c >= 1 &&
-          grid[r - 1][c]!.colour === grid[r][c - 1]!.colour &&
-          grid[r - 1][c]!.colour === grid[r - 1][c - 1]!.colour
+          col(r - 1, c) !== null &&
+          col(r - 1, c) === col(r, c - 1) &&
+          col(r - 1, c) === col(r - 1, c - 1)
         ) {
-          banned.add(grid[r - 1][c]!.colour!);
+          banned.add(col(r - 1, c)!);
         }
         const choices: Colour[] = [];
         for (let k = 0; k < this.colourCount; k++)
@@ -474,6 +519,7 @@ export class Board {
   // ---- match detection ----------------------------------------------------
 
   private colourAt(grid: Grid, r: number, c: number): Colour | null {
+    if (this.void[r][c]) return null; // Voids never match (ADR-0006)
     const cell = grid[r][c];
     // A Color Bomb has no colour and never matches; a Frozen candy is inert
     // until thawed. Other Specials keep their colour and CAN be lined up in a
@@ -598,6 +644,7 @@ export class Board {
           const nr = r + dr;
           const nc = c + dc;
           if (!this.inBounds(nr, nc)) continue;
+          if (this.void[r][c] || this.void[nr][nc]) continue; // no Void swaps
           if (this.immovable(grid[r][c]) || this.immovable(grid[nr][nc])) continue;
           this.swapCells(grid, r, c, nr, nc);
           const legal =
@@ -622,6 +669,7 @@ export class Board {
           const nr = r + dr;
           const nc = c + dc;
           if (!this.inBounds(nr, nc)) continue;
+          if (this.void[r][c] || this.void[nr][nc]) continue; // no Void swaps
           // Blockers and Frozen candies can't be swapped — skip those pairs.
           if (this.immovable(grid[r][c]) || this.immovable(grid[nr][nc])) continue;
           this.swapCells(grid, r, c, nr, nc);
@@ -658,6 +706,10 @@ export class Board {
   trySwap(a: Pos, b: Pos): { steps: Step[]; consumedMove: boolean; cleared: Colour[] } {
     const cleared: Colour[] = [];
     if (!adjacent(a, b) || samePos(a, b)) {
+      return { steps: [], consumedMove: false, cleared };
+    }
+    // A Void is not a playable Cell — a swap touching one is a no-op (ADR-0006).
+    if (this.void[a.row][a.col] || this.void[b.row][b.col]) {
       return { steps: [], consumedMove: false, cleared };
     }
     // Blockers and Frozen candies are immovable — a swap touching one is a no-op.
@@ -1612,8 +1664,11 @@ export class Board {
   }
 
   private hasHoles(): boolean {
+    // A Void is permanently null but is NOT a hole (nothing refills it); only a
+    // playable empty Cell counts, else settle() would loop forever. (ADR-0006.)
     for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) if (this.grid[r][c] === null) return true;
+      for (let c = 0; c < this.cols; c++)
+        if (this.grid[r][c] === null && !this.void[r][c]) return true;
     return false;
   }
 
@@ -1745,13 +1800,20 @@ export class Board {
   private applyGravity(steps: Step[]) {
     const moves: { id: number; from: Pos; to: Pos }[] = [];
     for (let c = 0; c < this.cols; c++) {
-      let write = this.rows - 1;
+      // Walk only the playable Cells of this column, bottom-up, compacting
+      // candies down into them. Voids are skipped entirely (not destinations,
+      // not walls) — a candy above a Void falls straight THROUGH it to the next
+      // playable Cell below (pass-through air, ADR-0006). Wall occupants still
+      // segment the column: candies stack on top of them.
+      let write = -1; // row of the next free playable cell to drop into, or -1
       for (let r = this.rows - 1; r >= 0; r--) {
+        if (this.void[r][c]) continue; // Void: pass-through, never a slot
+        if (write < 0) write = r; // first playable cell seen from the bottom
         const candy = this.grid[r][c];
         if (!candy) continue;
         if (this.isWall(candy)) {
-          // wall: stays at r; the next segment fills above it
-          write = r - 1;
+          // wall: stays put; the next segment fills in the playable cells above
+          write = this.nextPlayableAbove(r, c);
           continue;
         }
         if (write !== r) {
@@ -1759,10 +1821,16 @@ export class Board {
           this.grid[r][c] = null;
           moves.push({ id: candy.id, from: { row: r, col: c }, to: { row: write, col: c } });
         }
-        write--;
+        write = this.nextPlayableAbove(write, c);
       }
     }
     if (moves.length) steps.push({ kind: "fall", moves });
+  }
+
+  /** The next playable (non-Void) row strictly above `row` in `col`, or -1. */
+  private nextPlayableAbove(row: number, col: number): number {
+    for (let r = row - 1; r >= 0; r--) if (!this.void[r][col]) return r;
+    return -1;
   }
 
   /**
@@ -1783,6 +1851,7 @@ export class Board {
     for (let c = 0; c < this.cols; c++) {
       let topMost = true; // first fill in this column = the entry cell at the top
       for (let r = 0; r < this.rows; r++) {
+        if (this.void[r][c]) continue; // Voids never spawn a candy (ADR-0006)
         const cell = this.grid[r][c];
         if (this.isWall(cell)) break; // sealed below here
         if (cell !== null) continue;

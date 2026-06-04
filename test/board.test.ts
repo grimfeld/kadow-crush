@@ -1,9 +1,25 @@
 import { describe, expect, it } from "vitest";
 import { Board } from "../src/core/board.ts";
-import { COLS, ROWS } from "../src/core/config.ts";
+import { COLS, ROWS, type ChallengeConfig } from "../src/core/config.ts";
 import { Game } from "../src/core/game.ts";
 import { makeRng } from "../src/core/rng.ts";
 import type { Candy, Step } from "../src/core/types.ts";
+
+// A FIXED rectangular Challenge for the core-mechanic tests below. The shipped
+// Berry Sort default now varies its shape/size per session (ADR-0006); these
+// tests exercise gravity/match/fullness on a stable 8×7 rectangle so positions
+// and the "full grid" invariant stay deterministic. Void-shape behaviour has
+// its own coverage in shapes.test.ts.
+const RECT: ChallengeConfig = {
+  id: "test-rect",
+  name: "Test Rect",
+  blurb: "",
+  rows: ROWS,
+  cols: COLS,
+  colourCount: 5,
+  moves: 24,
+  objective: { kind: "collect-colours", targetCount: 2, quota: 14 },
+};
 
 function findMatchRun(grid: (Candy | null)[][]): string | null {
   // Mirror Board.colourAt: a Color Bomb (null colour) and a Frozen candy never
@@ -29,7 +45,7 @@ function findMatchRun(grid: (Candy | null)[][]): string | null {
 describe("generation", () => {
   it("produces a full grid with no pre-existing match for many seeds", () => {
     for (let seed = 1; seed <= 200; seed++) {
-      const board = new Board(makeRng(seed));
+      const board = new Board(makeRng(seed), RECT);
       let filled = 0;
       for (let r = 0; r < ROWS; r++)
         for (let c = 0; c < COLS; c++) if (board.grid[r][c]) filled++;
@@ -45,10 +61,10 @@ describe("generation", () => {
   });
 
   it("is deterministic for a fixed seed", () => {
-    const a = new Board(makeRng(42)).grid.map((row) =>
+    const a = new Board(makeRng(42), RECT).grid.map((row) =>
       row.map((cell) => cell!.colour),
     );
-    const b = new Board(makeRng(42)).grid.map((row) =>
+    const b = new Board(makeRng(42), RECT).grid.map((row) =>
       row.map((cell) => cell!.colour),
     );
     expect(a).toEqual(b);
@@ -58,7 +74,7 @@ describe("generation", () => {
 describe("swap", () => {
   it("reverts an illegal swap and does not consume a move", () => {
     // find a seed/position where a swap makes no match by brute force on seed 1
-    const board = new Board(makeRng(1));
+    const board = new Board(makeRng(1), RECT);
     // swap two cells that we force to not match: pick top-left two
     const res = board.trySwap({ row: 0, col: 0 }, { row: 0, col: 1 });
     if (!res.consumedMove) {
@@ -82,7 +98,7 @@ describe("swap", () => {
 describe("resolution leaves a stable, full board", () => {
   it("after any legal move the board has no immediate match and is full", () => {
     for (let seed = 1; seed <= 100; seed++) {
-      const board = new Board(makeRng(seed));
+      const board = new Board(makeRng(seed), RECT);
       // find a legal move by scanning
       let played = false;
       outer: for (let r = 0; r < ROWS && !played; r++)
@@ -121,7 +137,7 @@ describe("special activation settles the board", () => {
   }
 
   it("firing a swapped Striped clears its row and leaves no holes", () => {
-    const board = new Board(makeRng(5));
+    const board = new Board(makeRng(5), RECT);
     // Plant a horizontal Striped at (3,2) and a normal candy next to it so the
     // swap is special-legal. Give the row varied colours to clear.
     board.grid[3][2] = { id: 9001, colour: 0, special: "striped-row" };
@@ -139,7 +155,7 @@ describe("special activation settles the board", () => {
   });
 
   it("firing a swapped Color Bomb clears a colour and leaves no holes", () => {
-    const board = new Board(makeRng(11));
+    const board = new Board(makeRng(11), RECT);
     board.grid[4][3] = { id: 9101, colour: null, special: "color-bomb" };
     board.grid[4][4] = { id: 9102, colour: 2, special: null };
 
@@ -154,21 +170,21 @@ describe("special activation settles the board", () => {
 
 describe("objective and outcome", () => {
   it("starts playing with two distinct targets and zero collected", () => {
-    const game = new Game(123);
+    const game = new Game(123, RECT);
     expect(game.objective.targets.length).toBe(2);
     expect(new Set(game.objective.targets).size).toBe(2);
     expect(game.outcome()).toBe("playing");
-    expect(game.movesLeft).toBe(24); // Berry Sort budget
+    expect(game.movesLeft).toBe(24); // fixed-rect budget (not size-scaled)
   });
 
   it("loses when moves run out below quota", () => {
-    const game = new Game(123);
+    const game = new Game(123, RECT);
     game.movesLeft = 0;
     expect(game.outcome()).toBe("lost");
   });
 
   it("wins when both quotas are met", () => {
-    const game = new Game(123);
+    const game = new Game(123, RECT);
     for (const t of game.objective.targets)
       game.objective.collected.set(t, game.objective.quota);
     expect(game.outcome()).toBe("won");

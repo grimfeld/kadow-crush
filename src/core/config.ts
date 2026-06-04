@@ -8,6 +8,71 @@ import type { ObjectiveSpec, SpecialType } from "./types.ts";
 
 export type Difficulty = "Easy" | "Medium" | "Hard";
 
+/**
+ * A Board Shape template: a bounding-box size plus an optional Void test. The
+ * Board picks one per session (by seed) when a Challenge sets `shape: "varied"`,
+ * so the same Challenge varies its shape and size every play (ADR-0006).
+ * `isVoid(r,c)` returns true for Cells that are OUTSIDE the playable outline
+ * (never a Candy, never drawn/tapped); omit it for a full rectangle.
+ */
+export interface ShapeTemplate {
+  id: string;
+  rows: number;
+  cols: number;
+  /** True ⇒ the Cell is a Void (outside the shape). Omitted ⇒ full rectangle. */
+  isVoid?: (row: number, col: number, rows: number, cols: number) => boolean;
+}
+
+/**
+ * The curated set of Board Shapes a "varied" Challenge draws from. A mix of
+ * rectangles of different sizes and a few holed outlines. Each is sized so the
+ * "no pre-existing match + ≥1 legal move" guarantee still holds and a
+ * size-scaled objective stays winnable (≳ ~30 playable cells). (ADR-0006.)
+ */
+export const SHAPE_TEMPLATES: ShapeTemplate[] = [
+  // --- plain rectangles of varying size ---
+  { id: "rect-8x7", rows: 8, cols: 7 },
+  { id: "rect-7x7", rows: 7, cols: 7 },
+  { id: "rect-9x6", rows: 9, cols: 6 },
+  { id: "rect-6x8", rows: 6, cols: 8 },
+  // --- holed shapes (symmetric so they read as deliberate) ---
+  {
+    // Diamond: trim the four corners by a Manhattan radius. Each column stays a
+    // single contiguous run (no enclosed Void), so gravity is uncomplicated.
+    id: "diamond-9",
+    rows: 9,
+    cols: 9,
+    isVoid: (r, c, rows, cols) => {
+      const cr = (rows - 1) / 2;
+      const cc = (cols - 1) / 2;
+      return Math.abs(r - cr) + Math.abs(c - cc) > Math.max(cr, cc);
+    },
+  },
+  {
+    // Cross / plus: keep a vertical and a horizontal band, void the corners.
+    id: "cross-9",
+    rows: 9,
+    cols: 9,
+    isVoid: (r, c, rows, cols) => {
+      const inRowBand = r >= Math.floor(rows / 3) && r < rows - Math.floor(rows / 3);
+      const inColBand = c >= Math.floor(cols / 3) && c < cols - Math.floor(cols / 3);
+      return !(inRowBand || inColBand);
+    },
+  },
+  {
+    // Hourglass: void a centred triangle on the left and right edges, pinching
+    // the middle rows. Exercises mid-column (enclosed) Voids → pass-through.
+    id: "hourglass-8",
+    rows: 8,
+    cols: 8,
+    isVoid: (r, c, rows, cols) => {
+      const mid = (rows - 1) / 2;
+      const pinch = Math.round((mid - Math.abs(r - mid)) ); // 0 at top/bottom, grows to centre
+      return c < pinch || c >= cols - pinch;
+    },
+  },
+];
+
 /** Where Jelly is placed and how many layers (Clear-Jelly challenges). */
 export interface JellySpec {
   layers: number;
@@ -43,6 +108,20 @@ export interface ChallengeConfig {
   difficulty?: Difficulty;
   rows: number;
   cols: number;
+  /**
+   * Board Shape variation. `"varied"` ⇒ the Board picks a fresh ShapeTemplate
+   * from SHAPE_TEMPLATES each session (by seed), so its shape and size change
+   * every play; the static `rows`/`cols` above are then only a fallback/nominal
+   * size. Omitted ⇒ a fixed `rows × cols` rectangle as before. (ADR-0006.)
+   */
+  shape?: "varied";
+  /**
+   * Scale the size-dependent Objective values (collect-colours quota; move
+   * budget) to the playable-Cell count of the session's shape, anchored to this
+   * config's nominal `rows × cols`. Pairs with `shape: "varied"` so difficulty
+   * stays roughly even as the board grows or shrinks. (ADR-0006.)
+   */
+  scaleToSize?: boolean;
   /** Number of distinct Colours in play. */
   colourCount: number;
   /** Moves granted for the level. */
@@ -134,8 +213,13 @@ export const DEFAULT_CHALLENGE: ChallengeConfig = {
   name: "Berry Sort",
   blurb: "Collect two fruits before you run out of moves.",
   difficulty: "Easy",
+  // Berry Sort varies its Board Shape and size every session; quota/moves scale
+  // to the playable-cell count, anchored to the nominal 8×7 = 56 cells (quota 14
+  // ≈ 0.25 cells, moves 24 ≈ 0.43 cells). (ADR-0006.)
   rows: 8,
   cols: 7,
+  shape: "varied",
+  scaleToSize: true,
   colourCount: 5,
   moves: 24,
   objective: { kind: "collect-colours", targetCount: 2, quota: 14 },
@@ -148,15 +232,20 @@ export const DEFAULT_CHALLENGE: ChallengeConfig = {
 };
 
 /**
- * The level-select roster. Every Challenge is tuned Easy and uses an objective
- * the engine fully supports, so the menu never offers an unwinnable grid. The
- * four kept favourites lead, then the new gentle variations. (ADR-0002.)
+ * The Challenge roster. Every Challenge is tuned Easy and uses an objective the
+ * engine fully supports. Per ADR-0006 the product owner ships only Berry Sort
+ * on the menu for now; every other mode keeps its full implementation but is
+ * marked `hidden` (parked, still constructible by id and under test). Unhide a
+ * mode later by removing its `hidden` flag — no code is lost. (ADR-0002, 0006.)
  */
 export const CHALLENGES: ChallengeConfig[] = [
-  // ---- The four keepers -----------------------------------------------------
-  DEFAULT_CHALLENGE, // Berry Sort — collect 2 fruits
+  // ---- The only visible Challenge -------------------------------------------
+  DEFAULT_CHALLENGE, // Berry Sort — collect 2 fruits, varied board (ADR-0006)
+
+  // ---- Parked (hidden) modes — kept, not deleted ----------------------------
   {
     id: "sugar-rush",
+    hidden: true,
     name: "Sugar Rush",
     blurb: "A relaxed points dash — pop candies, watch it climb.",
     difficulty: "Easy",
@@ -174,6 +263,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "core-meltdown",
+    hidden: true,
     name: "Core Meltdown",
     blurb: "Jelly fills the middle — scrub the centre clean.",
     difficulty: "Easy",
@@ -191,6 +281,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "burger-run",
+    hidden: true,
     name: "Burger Run",
     blurb: "A full 4-part burger to assemble from the top down.",
     difficulty: "Easy",
@@ -286,6 +377,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "double-decker",
+    hidden: true,
     name: "Double Decker",
     blurb: "Thick jelly in the middle — clear each patch twice.",
     difficulty: "Easy",
@@ -341,6 +433,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "time-crunch",
+    hidden: true,
     name: "Time Crunch",
     blurb: "Beat the clock — score fast, no move limit!",
     difficulty: "Easy",
@@ -501,6 +594,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "jam-session",
+    hidden: true,
     name: "Jam Session",
     blurb: "A few jammy candies — swap them to spread jam across the board.",
     difficulty: "Easy",
@@ -520,6 +614,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "brick-wall",
+    hidden: true,
     name: "Brick Wall",
     blurb: "A wall of tough bricks lines the floor — smash every one!",
     difficulty: "Easy",
@@ -539,6 +634,7 @@ export const CHALLENGES: ChallengeConfig[] = [
   },
   {
     id: "choco-meltdown",
+    hidden: true,
     name: "Choco Meltdown",
     blurb: "Chocolate covers the floor and spreads — melt it all away!",
     difficulty: "Easy",

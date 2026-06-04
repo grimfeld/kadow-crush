@@ -355,10 +355,16 @@ export class MenuScreen {
     });
 
     // board-size hint (bottom-right) — sits to the right of the chip, so cap its
-    // width to the gap between the chip and the card edge and shrink to fit.
+    // width to the gap between the chip and the card edge and shrink to fit. A
+    // "varied" Challenge has no fixed size/moves (chosen per session, ADR-0006),
+    // so it shows a shape-agnostic label instead of stale dimensions.
     const hintW = w - (chipW + w * 0.08 + w * 0.12);
+    const sizeHint =
+      cfg.shape === "varied"
+        ? "Varied board"
+        : `${cfg.rows}×${cfg.cols} · ${cfg.moves} moves`;
     this.fitText(
-      `${cfg.rows}×${cfg.cols} · ${cfg.moves} moves`,
+      sizeHint,
       x + w - w * 0.06,
       y + h * 0.8,
       hintW,

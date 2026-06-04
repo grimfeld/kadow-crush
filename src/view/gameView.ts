@@ -1751,7 +1751,8 @@ export class GameView {
       text: goalLabel,
       pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.24),
       size: panelH * 0.22,
-      color: dark,
+      // tint the words dark but leave the fruit emoji at its true colour
+      ...emojiText(k, dark),
       anchor: "center",
     });
     // goal chips: emoji + count, evenly spread. With many targets (e.g. Rainbow

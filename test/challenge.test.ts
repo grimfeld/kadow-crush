@@ -61,7 +61,7 @@ describe("score objective", () => {
     // and at least the floor of 1).
     const game = new Game(123);
     expect(game.cfg.objective.kind).toBe("collect-colours");
-    expect(game.objective.targets.length).toBe(2);
+    expect(game.objective.targets.length).toBe(1); // Berry Sort: one fruit
     expect(game.movesLeft).toBeGreaterThanOrEqual(1);
     expect(game.movesLeft).toBeLessThanOrEqual(24);
   });

@@ -1741,12 +1741,18 @@ export class GameView {
       return;
     }
 
-    // collect-colours (default)
+    // collect-colours (default). With a single Target Colour, name it in the
+    // header ("Win 🍓!"); with several, fall back to a generic "Goal".
+    const goalLabel =
+      obj.targets.length === 1
+        ? `Win ${COLOUR_THEMES[obj.targets[0] as Colour].emoji}!`
+        : "Goal";
     k.drawText({
-      text: "Goal",
+      text: goalLabel,
       pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.24),
       size: panelH * 0.22,
-      color: dark,
+      // tint the words dark but leave the fruit emoji at its true colour
+      ...emojiText(k, dark),
       anchor: "center",
     });
     // goal chips: emoji + count, evenly spread. With many targets (e.g. Rainbow

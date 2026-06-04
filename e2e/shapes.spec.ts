@@ -25,12 +25,27 @@ async function startShape(page: Page, id: string | null, seed?: number) {
       ),
     [id, seed] as const,
   );
-  // Let the Kaplay loop paint the freshly-started board (its WebGL canvas keeps
-  // preserveDrawingBuffer on, so the retained frame screenshots reliably).
-  await page.waitForTimeout(600);
+  // Let the Kaplay loop paint the freshly-started board. Its WebGL canvas keeps
+  // preserveDrawingBuffer on, so once a frame lands the CDP screenshot reads it
+  // reliably. (A 2D drawImage copy reads blank headless, so we can't poll that
+  // way — we wait a fixed beat instead, and warm the engine in beforeAll so the
+  // first test isn't a cold-start blank.)
+  await page.waitForTimeout(800);
 }
 
 test.describe("board shapes render", () => {
+  // Warm the dev server + Kaplay/WebGL pipeline once so the FIRST shape test
+  // isn't a cold-start blank frame (compile + first paint lag on a fresh server).
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    await page.goto("/");
+    await page.waitForFunction(() => !!(window as ViewWindow).__view, {
+      timeout: 15000,
+    });
+    await page.waitForTimeout(800);
+    await page.close();
+  });
+
   for (const tpl of SHAPE_TEMPLATES) {
     test(`shape: ${tpl.id}`, async ({ page }) => {
       await startShape(page, tpl.id, SEED);

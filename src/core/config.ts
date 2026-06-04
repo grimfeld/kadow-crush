@@ -211,23 +211,23 @@ export interface ChallengeConfig {
 export const DEFAULT_CHALLENGE: ChallengeConfig = {
   id: "berry-sort",
   name: "Berry Sort",
-  blurb: "Collect two fruits before you run out of moves.",
+  blurb: "Collect one fruit before you run out of moves.",
   difficulty: "Easy",
   // Berry Sort varies its Board Shape and size every session; quota/moves scale
-  // to the playable-cell count, anchored to the nominal 8×7 = 56 cells (quota 14
-  // ≈ 0.25 cells, moves 24 ≈ 0.43 cells). (ADR-0006.)
+  // to the playable-cell count, anchored to the nominal 8×7 = 56 cells (quota 20
+  // ≈ 0.36 cells, moves 24 ≈ 0.43 cells). (ADR-0006.)
   rows: 8,
   cols: 7,
   shape: "varied",
   scaleToSize: true,
   colourCount: 5,
   moves: 24,
-  objective: { kind: "collect-colours", targetCount: 2, quota: 14 },
+  objective: { kind: "collect-colours", targetCount: 1, quota: 20 },
   tutorial: [
-    "See the 2 fruits at the top? Those are your goal.",
-    "Pop those fruits by lining up 3 of them.",
+    "See the fruit at the top? That's your goal.",
+    "Pop that fruit by lining up 3 of them.",
     "Every one you pop counts toward the number shown.",
-    "Win: reach both numbers before your moves hit 0.",
+    "Win: reach the number before your moves hit 0.",
   ],
 };
 

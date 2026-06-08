@@ -84,6 +84,14 @@ Striped+Wrapped fires 3 rows + 3 columns; Color-Bomb + Striped/Wrapped converts 
 Colour into that Special and fires them all; Color-Bomb + Color-Bomb clears a large
 but **capped** area (≤ ~50% of the board) so it can't be a guaranteed one-Move win.
 
+### Blast
+One detonation's footprint: the set of Cells a single Special (or one stage of a
+Combo) clears, plus its visual **Fx** (the named effect the view plays — a row/col/
+cross wave, or a radial flash sized in Cells). A Combo yields a list of Blasts; a
+single Special yields one. A Blast that covers another Special **chains** it — that
+covered Special detonates in turn, recursively (a per-Move firing set prevents
+double-firing). See Special, Combo.
+
 ### Cascade
 After Matches clear, surviving Candies fall down to fill empty Cells (gravity), and
 new Candies spawn from the top. This may create new Matches, which resolve in turn,

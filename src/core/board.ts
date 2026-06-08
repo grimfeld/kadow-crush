@@ -10,7 +10,13 @@ import {
   type ShapeTemplate,
 } from "./config.ts";
 import type { Rng } from "./rng.ts";
-import type { Candy, Colour, Fx, Pos, SpecialType, Step } from "./types.ts";
+import {
+  comboPlan,
+  footprint,
+  type Blast,
+  type BoardRead,
+} from "./special.ts";
+import type { Candy, Colour, Pos, SpecialType, Step } from "./types.ts";
 
 type Grid = (Candy | null)[][];
 
@@ -24,7 +30,7 @@ interface Run {
   horizontal: boolean;
 }
 
-export class Board {
+export class Board implements BoardRead {
   grid: Grid;
   /**
    * Board Shape mask: true ⇒ the Cell is a Void (outside the playable outline —
@@ -58,7 +64,8 @@ export class Board {
     this.grid = this.generateSolvableGrid();
   }
 
-  private inBounds(row: number, col: number): boolean {
+  /** In the rows×cols bounding box. Public — part of BoardRead. */
+  inBounds(row: number, col: number): boolean {
     return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
   }
 
@@ -73,6 +80,34 @@ export class Board {
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) if (!this.void[r][c]) n++;
     return n;
+  }
+
+  // ---- BoardRead (the read interface the Special geometry consumes) --------
+
+  /** The candy at a Cell, or null (empty / out of bounds). (BoardRead) */
+  candyAt(p: Pos): Candy | null {
+    return this.grid[p.row]?.[p.col] ?? null;
+  }
+
+  /** Every Cell holding a normal (non-Special) candy of `colour`. (BoardRead) */
+  cellsOfColour(colour: Colour): Pos[] {
+    const out: Pos[] = [];
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell?.colour === colour && !cell.special) out.push({ row: r, col: c });
+      }
+    return out;
+  }
+
+  /** A colour present on the board (fallback for a lone Color Bomb). (BoardRead) */
+  anyBoardColour(): Colour | null {
+    for (let r = 0; r < this.rows; r++)
+      for (let c = 0; c < this.cols; c++) {
+        const cell = this.grid[r][c];
+        if (cell && cell.colour !== null && !cell.special) return cell.colour;
+      }
+    return null;
   }
 
   /** Choose this session's ShapeTemplate: a "varied" Challenge draws from the
@@ -360,7 +395,7 @@ export class Board {
 
     const steps: Step[] = [];
     this.firing.clear();
-    this.detonate(at, candy.special, {}, steps, cleared);
+    this.fire(footprint(this, at, candy.special, {}), steps, cleared);
 
     // Resolve the cascade the blast set off. No swap this pass, so Specials made
     // by the cascade spawn at their component centre (planSpecials swap = null).
@@ -370,11 +405,14 @@ export class Board {
   }
 
   // ---- Special activation, chaining, and combos ---------------------------
+  // Geometry (which Cells a Special/Combo covers, and its Fx) lives in
+  // special.ts; the Board owns only the stateful firing: clearing, emitting the
+  // Step, and recursively chaining Specials a Blast happens to cover.
 
   /**
    * Fire the Special(s) directly swapped. If BOTH swapped candies are Specials
-   * it's a Combo (combined, bigger effect); otherwise each fires on its own.
-   * All detonations chain: any Special caught in a blast detonates too.
+   * it's a Combo (a list of Blasts from `comboPlan`); otherwise the one Special
+   * fires on its own. Every Blast chains any Special it covers.
    */
   private activateSwappedSpecials(steps: Step[], a: Pos, b: Pos, cleared: Colour[]) {
     this.firing.clear();
@@ -384,228 +422,46 @@ export class Board {
     const bSpecial = cb?.special ?? null;
 
     if (aSpecial && bSpecial) {
-      this.fireCombo(a, b, ca!, cb!, steps, cleared);
+      // consume both special candies up front so they don't re-chain
+      this.firing.add(ca!.id);
+      this.firing.add(cb!.id);
+      for (const bl of comboPlan(this, a, b, ca!, cb!)) this.fire(bl, steps, cleared);
       return;
     }
     // single special swapped with a normal candy — partner gives the colour
-    if (aSpecial) this.detonate(a, aSpecial, { partner: b }, steps, cleared);
-    else if (bSpecial) this.detonate(b, bSpecial, { partner: a }, steps, cleared);
+    if (aSpecial) this.fire(footprint(this, a, aSpecial, { partner: b }), steps, cleared);
+    else if (bSpecial) this.fire(footprint(this, b, bSpecial, { partner: a }), steps, cleared);
   }
 
   /**
-   * Detonate one Special at `origin`. Marks it firing, removes it from the grid,
-   * computes its footprint, and applies the blast (which chains other Specials).
-   * `opts.colour` overrides the target colour (combos / color-bomb).
+   * Apply one Blast: mark its origin firing, clear its Cells (emitting a
+   * special-activate Step carrying the Blast's Fx), then recursively fire any
+   * not-yet-firing Special the Blast covered. The `firing` Set prevents a chain
+   * from re-detonating a Special already in flight (ADR-0005).
    */
-  private detonate(
-    origin: Pos,
-    special: SpecialType,
-    opts: { partner?: Pos; colour?: Colour | null },
-    steps: Step[],
-    cleared: Colour[],
-  ) {
-    const self = this.grid[origin.row][origin.col];
+  private fire(bl: Blast, steps: Step[], cleared: Colour[]) {
+    const self = this.grid[bl.origin.row]?.[bl.origin.col];
     if (self) this.firing.add(self.id);
 
-    const cells = this.footprint(origin, special, opts);
-    this.blast(cells, origin, special, fxForSpecial(special), steps, cleared);
-  }
-
-  /**
-   * Fire a Combo: two Specials swapped together. `a` holds candy ca, `b` holds
-   * cb. The combined effect is bigger than either alone. The bomb+bomb combo
-   * clears a large but capped area so it can't be a guaranteed one-move win.
-   */
-  private fireCombo(
-    a: Pos,
-    b: Pos,
-    ca: Candy,
-    cb: Candy,
-    steps: Step[],
-    cleared: Colour[],
-  ) {
-    const types = [ca.special!, cb.special!];
-    const has = (t: SpecialType) => types.includes(t);
-    const both = (t: SpecialType) => types[0] === t && types[1] === t;
-    const stripe = (t: SpecialType) => t === "striped-row" || t === "striped-col";
-    const origin = b; // effects centre on the second (swapped-into) cell
-    // consume both special candies up front so they don't re-chain
-    this.firing.add(ca.id);
-    this.firing.add(cb.id);
-
-    // --- color bomb combos ---
-    if (both("color-bomb")) {
-      // clear a large capped area (~45% of the board) around the origin
-      const cells = this.cappedArea(origin, 0.45);
-      this.blast(cells, origin, "color-bomb", flashOver(origin, cells), steps, cleared);
-      return;
-    }
-    if (has("color-bomb") && types.some(stripe)) {
-      // turn every candy of one colour into a striped, then fire them
-      const colour = this.randomBoardColour();
-      // pop the two specials (a small flash centred on the swap)
-      this.blast([a, b], origin, "color-bomb", { kind: "flash", radiusCells: 1 }, steps, cleared);
-      if (colour !== null) this.convertColourAndFire(colour, "striped-row", steps, cleared);
-      return;
-    }
-    if (has("color-bomb") && has("wrapped")) {
-      const colour = this.randomBoardColour();
-      this.blast([a, b], origin, "color-bomb", { kind: "flash", radiusCells: 1 }, steps, cleared);
-      if (colour !== null) this.convertColourAndFire(colour, "wrapped", steps, cleared, 0.45);
-      return;
-    }
-
-    // --- striped / wrapped combos ---
-    if (stripe(types[0]) && stripe(types[1])) {
-      // cross: clear the origin's full row AND column
-      const cross = [
-        ...this.footprint(origin, "striped-row", {}),
-        ...this.footprint(origin, "striped-col", {}),
-      ];
-      this.blast(cross, origin, "striped-row", { kind: "wave", axis: "cross" }, steps, cleared);
-      return;
-    }
-    if (types.some(stripe) && has("wrapped")) {
-      // 3 rows + 3 columns — reads as a cross wave
-      const cells: Pos[] = [];
-      for (let d = -1; d <= 1; d++) {
-        const rr = origin.row + d;
-        const cc = origin.col + d;
-        if (rr >= 0 && rr < this.rows)
-          for (let c = 0; c < this.cols; c++) cells.push({ row: rr, col: c });
-        if (cc >= 0 && cc < this.cols)
-          for (let r = 0; r < this.rows; r++) cells.push({ row: r, col: cc });
-      }
-      this.blast(cells, origin, "wrapped", { kind: "wave", axis: "cross" }, steps, cleared);
-      return;
-    }
-    if (both("wrapped")) {
-      // large 5x5 explosion
-      this.blast(this.squareArea(origin, 2), origin, "wrapped", { kind: "flash", radiusCells: 2.5 }, steps, cleared);
-      return;
-    }
-
-    // fallback: fire both independently
-    this.detonate(a, ca.special!, { partner: b }, steps, cleared);
-    this.detonate(b, cb.special!, { partner: a }, steps, cleared);
-  }
-
-  /** A centred square of half-width `rad` (clamped to the board). */
-  private squareArea(origin: Pos, rad: number): Pos[] {
-    const cells: Pos[] = [];
-    for (let dr = -rad; dr <= rad; dr++)
-      for (let dc = -rad; dc <= rad; dc++) {
-        const r = origin.row + dr;
-        const c = origin.col + dc;
-        if (this.inBounds(r, c)) cells.push({ row: r, col: c });
-      }
-    return cells;
-  }
-
-  /** A capped blast area: the cells nearest the origin, up to `frac` of board. */
-  private cappedArea(origin: Pos, frac: number): Pos[] {
-    const budget = Math.floor(this.rows * this.cols * frac);
-    const all: Pos[] = [];
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) all.push({ row: r, col: c });
-    all.sort(
-      (p, q) =>
-        Math.hypot(p.row - origin.row, p.col - origin.col) -
-        Math.hypot(q.row - origin.row, q.col - origin.col),
-    );
-    return all.slice(0, budget);
-  }
-
-  /** Convert all candies of a colour into a Special, then detonate each. */
-  private convertColourAndFire(
-    colour: Colour,
-    special: SpecialType,
-    steps: Step[],
-    cleared: Colour[],
-    cap = 1,
-  ) {
-    const spots: Pos[] = [];
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) {
-        const cell = this.grid[r][c];
-        if (cell?.colour === colour && !cell.special) spots.push({ row: r, col: c });
-      }
-    const limit = cap < 1 ? Math.floor(spots.length * cap) : spots.length;
-    for (const p of spots.slice(0, Math.max(1, limit))) {
-      this.detonate(p, special, {}, steps, cleared);
-    }
-  }
-
-  /** The cells a Special covers. */
-  private footprint(
-    origin: Pos,
-    special: SpecialType,
-    opts: { partner?: Pos; colour?: Colour | null },
-  ): Pos[] {
-    const cells: Pos[] = [];
-    if (special === "striped-row") {
-      for (let c = 0; c < this.cols; c++) cells.push({ row: origin.row, col: c });
-    } else if (special === "striped-col") {
-      for (let r = 0; r < this.rows; r++) cells.push({ row: r, col: origin.col });
-    } else if (special === "wrapped") {
-      for (let dr = -1; dr <= 1; dr++)
-        for (let dc = -1; dc <= 1; dc++) {
-          const r = origin.row + dr;
-          const c = origin.col + dc;
-          if (this.inBounds(r, c)) cells.push({ row: r, col: c });
-        }
-    } else if (special === "color-bomb") {
-      // clear all of a target colour (partner's, or a forced colour)
-      const target =
-        opts.colour ??
-        (opts.partner ? this.grid[opts.partner.row][opts.partner.col]?.colour : null) ??
-        this.randomBoardColour();
-      cells.push(origin);
-      if (target !== null) {
-        for (let r = 0; r < this.rows; r++)
-          for (let c = 0; c < this.cols; c++)
-            if (this.grid[r][c]?.colour === target && !this.grid[r][c]?.special)
-              cells.push({ row: r, col: c });
-      }
-    }
-    return cells;
-  }
-
-  /**
-   * Clear a set of cells as a blast, emitting a special-activate step, and
-   * CHAINING: any not-yet-firing Special among those cells detonates in turn.
-   */
-  private blast(
-    cells: Pos[],
-    origin: Pos,
-    special: SpecialType,
-    fx: Fx,
-    steps: Step[],
-    cleared: Colour[],
-  ) {
     // find specials to chain BEFORE clearing (clearCells nulls them out)
     const chain: { pos: Pos; special: SpecialType }[] = [];
-    for (const p of cells) {
+    for (const p of bl.cells) {
       const cell = this.grid[p.row]?.[p.col];
-      if (cell?.special && !this.firing.has(cell.id) && !samePos(p, origin)) {
+      if (cell?.special && !this.firing.has(cell.id) && !samePos(p, bl.origin)) {
         this.firing.add(cell.id);
         chain.push({ pos: { ...p }, special: cell.special });
       }
     }
-    const { cells: cl, ids } = this.clearCells(cells, cleared);
-    steps.push({ kind: "special-activate", origin, cleared: cl, ids, special, fx });
-    // chain-detonate any specials the blast covered
-    for (const c of chain) this.detonate(c.pos, c.special, {}, steps, cleared);
-  }
-
-  /** Pick a colour present on the board (fallback for a lone color-bomb). */
-  private randomBoardColour(): Colour | null {
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) {
-        const cell = this.grid[r][c];
-        if (cell && cell.colour !== null && !cell.special) return cell.colour;
-      }
-    return null;
+    const { cells: cl, ids } = this.clearCells(bl.cells, cleared);
+    steps.push({
+      kind: "special-activate",
+      origin: bl.origin,
+      cleared: cl,
+      ids,
+      special: bl.special,
+      fx: bl.fx,
+    });
+    for (const c of chain) this.fire(footprint(this, c.pos, c.special, {}), steps, cleared);
   }
 
   /**
@@ -888,31 +744,6 @@ export class Board {
     }
   }
 }
-
-/**
- * The single-Special effect geometry (ADR-0001 — the core names what the view
- * plays). Combos override this with their combined shape at the blast site.
- */
-const fxForSpecial = (special: SpecialType): Fx => {
-  switch (special) {
-    case "striped-row":
-      return { kind: "wave", axis: "row" };
-    case "striped-col":
-      return { kind: "wave", axis: "col" };
-    case "wrapped":
-      return { kind: "flash", radiusCells: 1.1 }; // 3×3
-    case "color-bomb":
-      return { kind: "flash", radiusCells: 1.6 };
-  }
-};
-
-/** A flash sized to reach the farthest cleared cell from the origin (in Cells). */
-const flashOver = (origin: Pos, cells: Pos[]): Fx => {
-  let r = 1;
-  for (const p of cells)
-    r = Math.max(r, Math.hypot(p.row - origin.row, p.col - origin.col));
-  return { kind: "flash", radiusCells: r };
-};
 
 const key = (p: Pos) => `${p.row},${p.col}`;
 const dedupe = (cells: Pos[]): Pos[] => {

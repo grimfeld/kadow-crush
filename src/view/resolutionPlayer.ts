@@ -11,7 +11,7 @@
 
 import type { KAPLAYCtx } from "kaplay";
 import type { Game } from "../core/game.ts";
-import type { Colour, Pos, SpecialType, Step } from "../core/types.ts";
+import type { Colour, Fx, Pos, SpecialType, Step } from "../core/types.ts";
 import { cellCenter, type Layout } from "./layout.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import { Effects } from "./effects.ts";
@@ -21,6 +21,7 @@ import { playSound } from "./sound.ts";
 import {
   BURST_COLOURS,
   COLOUR_THEMES,
+  FX_TINT,
   GRID_PANEL,
   GRID_PANEL_BORDER,
   TEXT_ACCENT,
@@ -232,7 +233,7 @@ export class ResolutionPlayer {
         // ids come straight from the payload — no guessing by position
         const cells = step.kind === "clear" ? step.cells : step.cleared;
         if (step.kind === "special-activate") {
-          this.specialFx(step.special, step.origin, step.cleared);
+          this.specialFx(step.fx, step.special, step.origin, step.cleared);
         } else {
           playSound("clear");
         }
@@ -380,11 +381,13 @@ export class ResolutionPlayer {
   }
 
   /**
-   * Draw the right special-clear effect from a special-activate's geometry: a
-   * horizontal beam if the cleared cells line up on the origin's row, a vertical
-   * beam if on its column, otherwise a radial flash (color bomb / wrapped).
+   * Play the special-clear effect the CORE named (ADR-0001 — the view animates
+   * what the core reports, it never re-derives the axis from the cleared cells).
+   * `fx` carries the geometry (wave axis / flash radius in Cells); `special` only
+   * picks the tint from the view's palette. Combos arrive as a "cross" wave or a
+   * big flash, so no positional guessing is needed.
    */
-  private specialFx(special: SpecialType, origin: Pos, cleared: Pos[]) {
+  private specialFx(fx: Fx, special: SpecialType, origin: Pos, cleared: Pos[]) {
     if (cleared.length === 0) {
       playSound("special");
       return;
@@ -395,37 +398,26 @@ export class ResolutionPlayer {
     const R = this.layout.originX + this.layout.boardW;
     const T = this.layout.originY;
     const B = this.layout.originY + this.layout.boardH;
-    const sameRow = cleared.every((p) => p.row === origin.row);
-    const sameCol = cleared.every((p) => p.col === origin.col);
+    const tint = FX_TINT[special];
 
-    switch (special) {
-      case "striped-row":
-      case "striped-col":
-        // line waves; fall back by geometry for combo cross-blasts
-        if (sameRow && !sameCol)
-          this.effects.rowWave(ox, oy, L, R, cell * 0.8, [255, 210, 90]);
-        else if (sameCol && !sameRow)
-          this.effects.colWave(ox, oy, T, B, cell * 0.8, [255, 210, 90]);
-        else {
-          // a cross / multi-line combo — fire both axes
-          this.effects.rowWave(ox, oy, L, R, cell * 0.8, [255, 210, 90]);
-          this.effects.colWave(ox, oy, T, B, cell * 0.8, [255, 210, 90]);
-        }
-        playSound("striped");
-        break;
-      case "wrapped":
-        // a 3x3 (or bigger) burst flash sized to the cleared extent
-        this.effects.flash(ox, oy, cell * 2.2, [255, 150, 80]);
+    if (fx.kind === "wave") {
+      if (fx.axis === "row" || fx.axis === "cross")
+        this.effects.rowWave(ox, oy, L, R, cell * 0.8, tint);
+      if (fx.axis === "col" || fx.axis === "cross")
+        this.effects.colWave(ox, oy, T, B, cell * 0.8, tint);
+      playSound("striped");
+    } else {
+      // flash: radius named by the core in Cells → pixels via the layout.
+      this.effects.flash(ox, oy, cell * fx.radiusCells * 1.5, tint);
+      if (special === "wrapped") {
         for (const p of cleared) {
           const { x, y } = cellCenter(this.layout, p.row, p.col);
           this.particles.burst(x, y, [255, 170, 90], 6);
         }
         playSound("wrapped");
-        break;
-      case "color-bomb":
-        this.effects.flash(ox, oy, cell * 3.2, [120, 200, 255]);
+      } else {
         playSound("bomb");
-        break;
+      }
     }
   }
 

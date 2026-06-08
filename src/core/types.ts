@@ -16,6 +16,16 @@ export type SpecialType =
 export const isStriped = (s: SpecialType | null): boolean =>
   s === "striped-row" || s === "striped-col";
 
+/**
+ * The geometry of a Blast's visual effect, named by the core for the view to
+ * play (ADR-0001 — the core reports what happened; the view never re-derives it).
+ * Geometry only: a wave along an axis, or a radial flash sized in Cells. Colour
+ * is the view's concern (it tints from `theme.ts`, keyed on the Step's `special`).
+ */
+export type Fx =
+  | { kind: "wave"; axis: "row" | "col" | "cross" }
+  | { kind: "flash"; radiusCells: number };
+
 /** A Candy occupying a Cell. A Color Bomb has no own Colour (clears by target). */
 export interface Candy {
   /** Stable id so the view can track a Candy across falls/swaps. */
@@ -43,14 +53,17 @@ export type Step =
       colour: Colour | null;
       special: SpecialType;
     }
-  // A Special detonated. `special` lets the view pick the right FX (line wave,
-  // 3x3 burst, bomb flash, …); for combos it's the dominant/combined effect tag.
+  // A Special detonated. `fx` is the core-named effect geometry the view plays
+  // (it no longer re-derives the axis from the cleared cells). `special` is kept
+  // so the view can tint the effect from its theme; combos set `fx` to the
+  // combined shape (e.g. a cross) rather than a single special's axis.
   | {
       kind: "special-activate";
       origin: Pos;
       cleared: Pos[];
       ids: number[];
       special: SpecialType;
+      fx: Fx;
     }
   | { kind: "fall"; moves: { id: number; from: Pos; to: Pos }[] }
   | { kind: "spawn"; spawns: { id: number; colour: Colour; at: Pos }[] }

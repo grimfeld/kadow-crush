@@ -10,7 +10,7 @@ import {
   type ShapeTemplate,
 } from "./config.ts";
 import type { Rng } from "./rng.ts";
-import type { Candy, Colour, Pos, SpecialType, Step } from "./types.ts";
+import type { Candy, Colour, Fx, Pos, SpecialType, Step } from "./types.ts";
 
 type Grid = (Candy | null)[][];
 
@@ -408,7 +408,7 @@ export class Board {
     if (self) this.firing.add(self.id);
 
     const cells = this.footprint(origin, special, opts);
-    this.blast(cells, origin, special, steps, cleared);
+    this.blast(cells, origin, special, fxForSpecial(special), steps, cleared);
   }
 
   /**
@@ -436,19 +436,21 @@ export class Board {
     // --- color bomb combos ---
     if (both("color-bomb")) {
       // clear a large capped area (~45% of the board) around the origin
-      this.blast(this.cappedArea(origin, 0.45), origin, "color-bomb", steps, cleared);
+      const cells = this.cappedArea(origin, 0.45);
+      this.blast(cells, origin, "color-bomb", flashOver(origin, cells), steps, cleared);
       return;
     }
     if (has("color-bomb") && types.some(stripe)) {
       // turn every candy of one colour into a striped, then fire them
       const colour = this.randomBoardColour();
-      this.blast([a, b], origin, "color-bomb", steps, cleared); // pop the two specials
+      // pop the two specials (a small flash centred on the swap)
+      this.blast([a, b], origin, "color-bomb", { kind: "flash", radiusCells: 1 }, steps, cleared);
       if (colour !== null) this.convertColourAndFire(colour, "striped-row", steps, cleared);
       return;
     }
     if (has("color-bomb") && has("wrapped")) {
       const colour = this.randomBoardColour();
-      this.blast([a, b], origin, "color-bomb", steps, cleared);
+      this.blast([a, b], origin, "color-bomb", { kind: "flash", radiusCells: 1 }, steps, cleared);
       if (colour !== null) this.convertColourAndFire(colour, "wrapped", steps, cleared, 0.45);
       return;
     }
@@ -460,11 +462,11 @@ export class Board {
         ...this.footprint(origin, "striped-row", {}),
         ...this.footprint(origin, "striped-col", {}),
       ];
-      this.blast(cross, origin, "striped-row", steps, cleared);
+      this.blast(cross, origin, "striped-row", { kind: "wave", axis: "cross" }, steps, cleared);
       return;
     }
     if (types.some(stripe) && has("wrapped")) {
-      // 3 rows + 3 columns
+      // 3 rows + 3 columns — reads as a cross wave
       const cells: Pos[] = [];
       for (let d = -1; d <= 1; d++) {
         const rr = origin.row + d;
@@ -474,12 +476,12 @@ export class Board {
         if (cc >= 0 && cc < this.cols)
           for (let r = 0; r < this.rows; r++) cells.push({ row: r, col: cc });
       }
-      this.blast(cells, origin, "wrapped", steps, cleared);
+      this.blast(cells, origin, "wrapped", { kind: "wave", axis: "cross" }, steps, cleared);
       return;
     }
     if (both("wrapped")) {
       // large 5x5 explosion
-      this.blast(this.squareArea(origin, 2), origin, "wrapped", steps, cleared);
+      this.blast(this.squareArea(origin, 2), origin, "wrapped", { kind: "flash", radiusCells: 2.5 }, steps, cleared);
       return;
     }
 
@@ -577,6 +579,7 @@ export class Board {
     cells: Pos[],
     origin: Pos,
     special: SpecialType,
+    fx: Fx,
     steps: Step[],
     cleared: Colour[],
   ) {
@@ -590,7 +593,7 @@ export class Board {
       }
     }
     const { cells: cl, ids } = this.clearCells(cells, cleared);
-    steps.push({ kind: "special-activate", origin, cleared: cl, ids, special });
+    steps.push({ kind: "special-activate", origin, cleared: cl, ids, special, fx });
     // chain-detonate any specials the blast covered
     for (const c of chain) this.detonate(c.pos, c.special, {}, steps, cleared);
   }
@@ -885,6 +888,31 @@ export class Board {
     }
   }
 }
+
+/**
+ * The single-Special effect geometry (ADR-0001 — the core names what the view
+ * plays). Combos override this with their combined shape at the blast site.
+ */
+const fxForSpecial = (special: SpecialType): Fx => {
+  switch (special) {
+    case "striped-row":
+      return { kind: "wave", axis: "row" };
+    case "striped-col":
+      return { kind: "wave", axis: "col" };
+    case "wrapped":
+      return { kind: "flash", radiusCells: 1.1 }; // 3×3
+    case "color-bomb":
+      return { kind: "flash", radiusCells: 1.6 };
+  }
+};
+
+/** A flash sized to reach the farthest cleared cell from the origin (in Cells). */
+const flashOver = (origin: Pos, cells: Pos[]): Fx => {
+  let r = 1;
+  for (const p of cells)
+    r = Math.max(r, Math.hypot(p.row - origin.row, p.col - origin.col));
+  return { kind: "flash", radiusCells: r };
+};
 
 const key = (p: Pos) => `${p.row},${p.col}`;
 const dedupe = (cells: Pos[]): Pos[] => {

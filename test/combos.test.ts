@@ -137,6 +137,55 @@ describe("special + special combos", () => {
   });
 });
 
+// The Fx the core names for each special-activate (ADR-0001: the view animates
+// this, it no longer re-derives the axis from the cleared cells).
+function fxTags(steps: Step[]): unknown[] {
+  return steps
+    .filter((s) => s.kind === "special-activate")
+    .map((s: any) => s.fx);
+}
+
+describe("special-activate carries the effect geometry (fx)", () => {
+  it("a single striped-row names a row wave", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = special(9001, "striped-row", 0);
+    const res = b.tryActivate({ row: 4, col: 4 });
+    expect(fxTags(res.steps)).toContainEqual({ kind: "wave", axis: "row" });
+  });
+
+  it("a single striped-col names a col wave", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = special(9001, "striped-col", 0);
+    const res = b.tryActivate({ row: 4, col: 4 });
+    expect(fxTags(res.steps)).toContainEqual({ kind: "wave", axis: "col" });
+  });
+
+  it("a wrapped names a flash", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = special(9001, "wrapped", 0);
+    const res = b.tryActivate({ row: 4, col: 4 });
+    expect(fxTags(res.steps)).toContainEqual({ kind: "flash", radiusCells: 1.1 });
+  });
+
+  it("striped + striped names a CROSS wave (not a single-axis tag)", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = special(9001, "striped-row", 0);
+    b.grid[4][5] = special(9002, "striped-col", 1);
+    const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
+    // Before C3 this blast lied with a "striped-row" tag and the view guessed
+    // the axis back from geometry. Now the core states the truth: a cross.
+    expect(fxTags(res.steps)).toContainEqual({ kind: "wave", axis: "cross" });
+  });
+
+  it("striped + wrapped (3 rows + 3 cols) also names a CROSS wave", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = special(9001, "striped-row", 0);
+    b.grid[4][5] = special(9002, "wrapped", 1);
+    const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
+    expect(fxTags(res.steps)).toContainEqual({ kind: "wave", axis: "cross" });
+  });
+});
+
 describe("chain detonation", () => {
   it("a striped blast that covers another special detonates it too", () => {
     const b = makeBoard(2);

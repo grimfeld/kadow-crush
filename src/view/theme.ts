@@ -48,6 +48,18 @@ export const CELL_BG: [number, number, number] = [225, 238, 247];
 // Bomb gets a neutral dark base for contrast.
 export const BOMB_FILL: [number, number, number] = [70, 70, 90];
 
+// Special-clear effect tints, keyed by SpecialType. The core names the effect
+// GEOMETRY (Fx); the view owns its COLOUR (ADR-0001) and looks it up here.
+export const FX_TINT: Record<
+  "striped-row" | "striped-col" | "color-bomb" | "wrapped",
+  [number, number, number]
+> = {
+  "striped-row": [255, 210, 90],
+  "striped-col": [255, 210, 90],
+  wrapped: [255, 150, 80],
+  "color-bomb": [120, 200, 255],
+};
+
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];
 export const PANEL_BORDER: [number, number, number] = [120, 180, 215];

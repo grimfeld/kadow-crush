@@ -13,9 +13,9 @@ import type { Candy, Colour, Pos, SpecialType, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
 import { MusicPlayer } from "./music.ts";
 import { TutorialScreen } from "./tutorial.ts";
+import { Hud } from "./hud.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import { Effects } from "./effects.ts";
-import { emojiText } from "./text.ts";
 import {
   BG_BOTTOM,
   BG_TOP,
@@ -23,10 +23,7 @@ import {
   COLOUR_THEMES,
   GRID_PANEL,
   GRID_PANEL_BORDER,
-  PANEL_BORDER,
-  PANEL_FILL,
   TEXT_ACCENT,
-  TEXT_DARK,
 } from "./theme.ts";
 import { playSound } from "./sound.ts";
 import { Particles } from "./particles.ts";
@@ -62,9 +59,7 @@ export class GameView {
   // already the final state mid-animation — reading it caused tiles to vanish
   // and reappear).
   private viewGrid: (number | null)[][] = [];
-  // The "?" tutorial button + Music toggle hit rects (set each HUD draw).
-  private helpRect = { x: 0, y: 0, w: 0, h: 0 };
-  private musicRect = { x: 0, y: 0, w: 0, h: 0 };
+  private hud: Hud;
   private aborted = false;
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
@@ -78,11 +73,6 @@ export class GameView {
   private hint: [Pos, Pos] | null = null;
   // Cascade depth within the current Resolution, for escalating praise words.
   private cascadeDepth = 0;
-  // Screen position of each goal chip, filled by the HUD each frame so a cleared
-  // fruit can fly to its chip. Keyed by Colour.
-  private goalChipPos = new Map<Colour, { x: number; y: number }>();
-  // Per-colour HUD chip "bump" scale, decays each frame; bumped on arrival.
-  private chipBump = new Map<Colour, number>();
   private prevOutcome: "playing" | "won" | "lost" = "playing";
   // Seconds to linger on the final board before the end overlay appears, so the
   // last clears/falls are visible. Counts down from END_OVERLAY_DELAY once the
@@ -93,11 +83,10 @@ export class GameView {
   private celebrateLeft = 0;
   private nextWaveIn = 0;
   private overlayPop = 0;
-  // Replay button hit rect on the end overlay.
-  private replayRect = { x: 0, y: 0, w: 0, h: 0 };
 
   constructor(private k: KAPLAYCtx) {
     this.tutorial = new TutorialScreen(k);
+    this.hud = new Hud(k);
     this.particles = new Particles(k);
     this.effects = new Effects(k);
     this.bind();
@@ -105,12 +94,7 @@ export class GameView {
     k.onUpdate(() => {
       this.particles.update(k.dt());
       this.effects.update(k.dt());
-      // decay any goal-chip bumps
-      for (const [c, v] of this.chipBump) {
-        const nv = v - k.dt() * 4;
-        if (nv <= 0) this.chipBump.delete(c);
-        else this.chipBump.set(c, nv);
-      }
+      this.hud.advance(k.dt()); // decay any goal-chip bumps
     });
     // Boot straight into a game (ADR-0007 — no menu).
     this.startGame();
@@ -136,7 +120,7 @@ export class GameView {
     for (let i = 0; i < ids.length && launched < 6; i++) {
       const s = this.sprites.get(ids[i]);
       if (!s || s.colour === null || !targets.has(s.colour)) continue;
-      const dest = this.goalChipPos.get(s.colour);
+      const dest = this.hud.chipPos(s.colour);
       if (!dest) continue;
       const colour = s.colour;
       this.effects.fly(
@@ -146,7 +130,7 @@ export class GameView {
         dest.x,
         dest.y,
         this.layout.cell * 0.55,
-        () => this.chipBump.set(colour, 1),
+        () => this.hud.bumpChip(colour),
       );
       launched++;
     }
@@ -232,13 +216,6 @@ export class GameView {
     const size = Math.min(56, this.layout.cell * (1.1 + depth * 0.1));
     this.effects.word(word, x, y, colour, size);
     playSound("special");
-  }
-
-  // White, used as the emoji tint. Kaplay multiplies a drawText's `color` into
-  // the glyph; omitting it lets a dark default bleed in and darkens the emoji,
-  // so emoji-only labels pass white explicitly to render their true colours.
-  private get white() {
-    return this.k.rgb(255, 255, 255);
   }
 
   // Board dims of the active board (the session's shape may differ from nominal).
@@ -556,10 +533,6 @@ export class GameView {
     return { row, col };
   }
 
-  private hits(r: { x: number; y: number; w: number; h: number }, px: number, py: number) {
-    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
-  }
-
   private bind() {
     const k = this.k;
 
@@ -576,12 +549,12 @@ export class GameView {
       }
 
       // Music toggle + "?" tutorial buttons work any time.
-      if (this.hits(this.musicRect, p.x, p.y)) {
+      if (this.hud.musicHit(p.x, p.y)) {
         playSound("swap");
         this.music.cycle();
         return;
       }
-      if (this.hits(this.helpRect, p.x, p.y)) {
+      if (this.hud.helpHit(p.x, p.y)) {
         playSound("swap");
         this.mode = "tutorial";
         return;
@@ -589,7 +562,7 @@ export class GameView {
 
       // End-of-game overlay: tap Replay to start a fresh game.
       if (this.game.outcome() !== "playing") {
-        if (!this.busy && this.endHold <= 0 && this.hits(this.replayRect, p.x, p.y)) {
+        if (!this.busy && this.endHold <= 0 && this.hud.replayHit(p.x, p.y)) {
           playSound("swap");
           this.startGame();
         }
@@ -831,252 +804,23 @@ export class GameView {
       drawCandy(k, s.colour, s.special, s.x, s.y + dy, this.layout.cell, s.scale);
     }
 
-    this.drawHud();
+    this.hud.draw(this.layout, this.game.movesLeft, this.game.objective, this.music.label);
 
     // Transient effects (special-clear beams, cascade words, fruit flying to the
     // goal) over the board + HUD, but under the end overlay.
     this.effects.draw();
 
     const outcome = this.game.outcome();
-    if (outcome !== "playing" && !this.busy && this.endHold <= 0)
-      this.drawOverlay(outcome === "won");
+    if (outcome !== "playing" && !this.busy && this.endHold <= 0) {
+      const won = outcome === "won";
+      // Win modal pops in with a slight overshoot; lose modal just appears.
+      this.hud.drawOverlay(won, won ? popEase(this.overlayPop) : 1, this.overlayPop);
+    }
 
     // Particles last so clear-bursts and the win confetti shower render on top.
     this.particles.draw();
   }
 
-  /** A soft rounded HUD panel. */
-  private panel(x: number, y: number, w: number, h: number) {
-    const k = this.k;
-    k.drawRect({
-      pos: k.vec2(x, y),
-      width: w,
-      height: h,
-      radius: Math.min(w, h) * 0.28,
-      color: k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
-      opacity: 0.92,
-      outline: {
-        width: 3,
-        color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]),
-      },
-    });
-  }
-
-  /** A small round pill button in the top-left/right; returns its hit rect. */
-  private drawPill(text: string, x: number, y: number): { x: number; y: number; w: number; h: number } {
-    const k = this.k;
-    const bh = Math.max(28, Math.min(40, this.k.height() * 0.045));
-    const size = bh * 0.42;
-    const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
-    const bw = m.width + bh * 0.9;
-    const rect = { x, y, w: bw, h: bh };
-    k.drawRect({
-      pos: k.vec2(x, y),
-      width: bw,
-      height: bh,
-      radius: bh / 2,
-      color: k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
-      opacity: 0.92,
-      outline: { width: 2, color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]) },
-    });
-    k.drawText({
-      text,
-      pos: k.vec2(x + bw / 2, y + bh / 2),
-      size,
-      ...emojiText(k, k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2])),
-      anchor: "center",
-    });
-    return rect;
-  }
-
-  private drawHud() {
-    const k = this.k;
-    const h = this.layout.hudH;
-    const left = this.layout.originX;
-    const right = this.layout.originX + this.layout.boardW;
-    const dark = k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]);
-    const accent = k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]);
-    const obj = this.game.objective;
-
-    // Top-row buttons: Music (left) and "?" tutorial (right).
-    const topY = Math.max(6, this.k.height() * 0.012);
-    this.musicRect = this.drawPill(`♪ ${this.music.label}`, Math.max(6, this.k.width() * 0.02), topY);
-    const helpW = Math.max(28, Math.min(40, this.k.height() * 0.045)) + 12;
-    this.helpRect = this.drawPill("?", this.k.width() - helpW - Math.max(6, this.k.width() * 0.02), topY);
-
-    const panelTop = topY + this.musicRect.h + h * 0.04;
-    const panelH = Math.min(h * 0.62, h - panelTop - h * 0.06);
-    const panelY = panelTop;
-    const movesW = Math.max(86, this.layout.boardW * 0.32);
-
-    // --- Moves panel (left) ---
-    this.panel(left, panelY, movesW, panelH);
-    k.drawText({
-      text: "Moves",
-      pos: k.vec2(left + movesW / 2, panelY + panelH * 0.3),
-      size: panelH * 0.24,
-      color: dark,
-      anchor: "center",
-    });
-    k.drawText({
-      text: `${this.game.movesLeft}`,
-      pos: k.vec2(left + movesW / 2, panelY + panelH * 0.68),
-      size: panelH * 0.38,
-      color: accent,
-      anchor: "center",
-    });
-
-    // --- Goal panel (right): collect one (or more) Target Colours ---
-    const goalX = left + movesW + this.layout.cell * 0.3;
-    const goalW = right - goalX;
-    this.panel(goalX, panelY, goalW, panelH);
-
-    // With a single Target Colour, name it in the header ("Win 🍓!"); with
-    // several, fall back to a generic "Goal".
-    const goalLabel =
-      obj.targets.length === 1
-        ? `Win ${COLOUR_THEMES[obj.targets[0] as Colour].emoji}!`
-        : "Goal";
-    k.drawText({
-      text: goalLabel,
-      pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.24),
-      size: panelH * 0.22,
-      // tint the words dark but leave the fruit emoji at its true colour
-      ...emojiText(k, dark),
-      anchor: "center",
-    });
-    const chips = Math.max(1, obj.targets.length);
-    const slot = goalW / chips;
-    const wide = chips <= 3;
-    this.goalChipPos.clear();
-    obj.targets.forEach((colour, i) => {
-      const cx = goalX + slot * (i + 0.5);
-      const cy = panelY + panelH * 0.64;
-      const theme = COLOUR_THEMES[colour as Colour];
-      const got = Math.min(obj.collected.get(colour) ?? 0, obj.quota);
-      const emojiSize = Math.min(panelH * 0.36, slot * 0.5);
-      const countSize = Math.min(panelH * 0.26, slot * 0.4);
-      // a bump scale when a fruit just flew in
-      const bump = 1 + (this.chipBump.get(colour) ?? 0) * 0.5;
-      const ex = wide ? cx - panelH * 0.18 : cx;
-      const ey = wide ? cy : cy - panelH * 0.14;
-      this.goalChipPos.set(colour, { x: ex, y: ey });
-      k.drawText({
-        text: theme.emoji,
-        pos: k.vec2(ex, ey),
-        size: emojiSize * bump,
-        anchor: "center",
-        color: this.white,
-      });
-      if (wide) {
-        k.drawText({
-          text: `${got}/${obj.quota}`,
-          pos: k.vec2(cx + panelH * 0.12, cy),
-          size: countSize,
-          color: dark,
-          anchor: "left",
-        });
-      } else {
-        k.drawText({
-          text: `${got}/${obj.quota}`,
-          pos: k.vec2(cx, cy + panelH * 0.2),
-          size: countSize,
-          color: dark,
-          anchor: "center",
-        });
-      }
-    });
-  }
-
-  private drawOverlay(won: boolean) {
-    const k = this.k;
-    const cx = k.width() / 2;
-    const cy = k.height() / 2;
-    // Win modal pops in with a slight overshoot; lose modal just appears.
-    const pop = won ? popEase(this.overlayPop) : 1;
-    k.drawRect({
-      pos: k.vec2(0, 0),
-      width: k.width(),
-      height: k.height(),
-      color: k.rgb(20, 50, 75),
-      opacity: 0.5 * (won ? this.overlayPop : 1),
-    });
-
-    const w = Math.min(k.width() * 0.78, 360) * pop;
-    const ph = 200 * pop;
-    const px = cx - w / 2;
-    const py = cy - ph / 2;
-    this.panel(px, py, w, ph);
-
-    // a celebratory pulse on the title (gentle breathing once popped in)
-    const pulse = won ? 1 + Math.sin(this.overlayPop * Math.PI) * 0.08 : 1;
-    this.fitText(
-      won ? "🎉 You Win! 🎉" : "Out of Moves",
-      cx,
-      py + ph * 0.32,
-      w * 0.84,
-      34 * pop * pulse,
-      k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]),
-    );
-
-    // replay pill
-    const bw = w * 0.6;
-    const bh = 52 * pop;
-    const bx = cx - bw / 2;
-    const by = py + ph * 0.58;
-    this.replayRect = { x: bx, y: by, w: bw, h: bh };
-    k.drawRect({
-      pos: k.vec2(bx, by),
-      width: bw,
-      height: bh,
-      radius: bh / 2,
-      color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]),
-    });
-    this.fitText(
-      won ? "Play Again" : "Try Again",
-      cx,
-      by + bh / 2,
-      bw * 0.88,
-      20 * pop,
-      k.rgb(255, 255, 255),
-    );
-  }
-
-  /**
-   * Centered single line that shrinks to fit `maxW` (down to a floor) so HUD and
-   * overlay labels never leak out of their panel on narrow phone screens.
-   */
-  private fitTextCache = new Map<string, number>();
-
-  private fitText(
-    text: string,
-    cx: number,
-    cy: number,
-    maxW: number,
-    size: number,
-    color: ReturnType<KAPLAYCtx["rgb"]>,
-  ) {
-    const k = this.k;
-    const key = `${text}|${size}|${maxW}`;
-    let s = this.fitTextCache.get(key);
-    if (s === undefined) {
-      s = size;
-      for (let i = 0; i < 8; i++) {
-        const m = k.formatText({ text, size: s, pos: k.vec2(0, 0) });
-        if (m.width <= maxW || s <= size * 0.5) break;
-        s *= 0.9;
-      }
-      if (this.fitTextCache.size > 256) this.fitTextCache.clear();
-      this.fitTextCache.set(key, s);
-    }
-    k.drawText({
-      text,
-      pos: k.vec2(cx, cy),
-      size: s,
-      anchor: "center",
-      ...emojiText(k, color),
-    });
-  }
 }
 
 const ease = (t: number) => 1 - Math.pow(1 - t, 3);

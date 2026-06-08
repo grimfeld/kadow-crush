@@ -87,7 +87,7 @@ Two Specials swapped together produce a single combined effect, bigger than eith
 alone: Striped+Striped clears a full row **and** column; Wrapped+Wrapped is a 5×5;
 Striped+Wrapped fires 3 rows + 3 columns; Color-Bomb + Striped/Wrapped converts a
 Colour into that Special and fires them all; Color-Bomb + Color-Bomb clears a large
-but **capped** area (≤ ~50% of the board) so it can't be a guaranteed one-Move win.
+but **capped** area (~45% of the board) so it can't be a guaranteed one-Move win.
 
 ### Blast
 One detonation's footprint: the set of Cells a single Special (or one stage of a

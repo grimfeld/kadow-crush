@@ -10,7 +10,6 @@ export type SoundName =
   | "striped"
   | "wrapped"
   | "bomb"
-  | "fish"
   | "fall"
   | "win"
   | "lose";
@@ -92,11 +91,6 @@ export function playSound(name: SoundName) {
       [880, 1320, 1760, 2200].forEach((f, i) =>
         note(c, f, t + i * 0.03, 0.18, "square", 0.08),
       );
-      break;
-    case "fish":
-      // a watery blip-up
-      note(c, 520, t, 0.08, "sine", 0.16);
-      note(c, 900, t + 0.06, 0.12, "sine", 0.14);
       break;
     case "fall":
       note(c, 300, t, 0.12, "sine", 0.1);

@@ -1,6 +1,6 @@
 // Background music (view-only). Loops one selectable track via an
-// HTMLAudioElement across both the menu and play screens. Tracks are Kevin
-// MacLeod (incompetech.com), CC BY 3.0 — see public/music/ATTRIBUTION.md.
+// HTMLAudioElement. Tracks are CC-BY (Eric Matyas, soundimage.org) and CC0 —
+// see public/music/ATTRIBUTION.md.
 //
 // The track choice (including "off") persists in localStorage. Audio can't
 // start until a user gesture (autoplay policy), so unlock() is called from the

@@ -14,6 +14,11 @@ moves run out, on a board whose shape and size vary every play.
 The grid of cells where play happens. Holds Candies in a fixed number of rows and
 columns.
 
+> In code the Board splits into a **Grid** — the cell data plus the structural
+> invariants (Void/bounds/`colourAt`/pass-through gravity) — and the Board **rules
+> engine** (match detection, the Move/Cascade, Specials, Reshuffle) that operates on
+> that Grid. "Board" remains the player-facing concept either way.
+
 ### Cell
 A single position on the Board, addressed by row and column. Holds exactly one
 Candy (or is empty mid-resolution). A Cell may instead be a **Void** (outside the

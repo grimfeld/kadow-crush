@@ -1,7 +1,9 @@
-// Pure match-3 logic core. No rendering. See CONTEXT.md for the domain and
-// ADR-0001 for the core/view split and the Step contract. ADR-0007: the simple
-// game — three Specials (striped/color-bomb/wrapped), varied board shapes,
-// cascade, reshuffle. No obstacles, no jelly/ingredients/generators.
+// The Board rules engine (ADR-0001). Owns the match-3 RULES — generation,
+// the Move/Cascade, Special creation/firing, reshuffle — over a Grid (the cell
+// data + structural invariants, grid.ts) and the pure match detection (match.ts)
+// and Special geometry (special.ts). No rendering; no raw cell indexing (every
+// access goes through the Grid). ADR-0007: the simple game — three Specials
+// (striped/color-bomb/wrapped), varied board shapes, cascade, reshuffle.
 
 import {
   DEFAULT_CHALLENGE,
@@ -9,37 +11,25 @@ import {
   type ChallengeConfig,
   type ShapeTemplate,
 } from "./config.ts";
-import type { Rng } from "./rng.ts";
+import { Grid } from "./grid.ts";
 import {
-  comboPlan,
-  footprint,
-  type Blast,
-  type BoardRead,
-} from "./special.ts";
+  findFirstLegalMove,
+  hasAnyMatch,
+  hasLegalMove,
+  matchedCells,
+  type Cells,
+} from "./match.ts";
+import type { Rng } from "./rng.ts";
+import { comboPlan, footprint, type Blast, type BoardRead } from "./special.ts";
 import type { Candy, Colour, Pos, SpecialType, Step } from "./types.ts";
-
-type Grid = (Candy | null)[][];
 
 const samePos = (a: Pos, b: Pos) => a.row === b.row && a.col === b.col;
 const adjacent = (a: Pos, b: Pos) =>
   Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
 
-/** A run of matched same-colour candies on one line. */
-interface Run {
-  cells: Pos[];
-  horizontal: boolean;
-}
-
 export class Board implements BoardRead {
-  grid: Grid;
-  /**
-   * Board Shape mask: true ⇒ the Cell is a Void (outside the playable outline —
-   * never a Candy, never matches, never drawn/tapped). Parallel to `grid`, fixed
-   * for the session. All-false for a rectangular Board. (ADR-0006.)
-   */
-  readonly void: boolean[][];
-  readonly rows: number;
-  readonly cols: number;
+  /** The cell data + structural invariants (Void/bounds/gravity). */
+  private gridObj: Grid;
   readonly colourCount: number;
   private nextId = 1;
   /** Candy ids already detonating this Move, so chains never double-fire. */
@@ -57,57 +47,49 @@ export class Board implements BoardRead {
     // Pick the session's Board Shape from the curated set (by seed, or a forced
     // id). (ADR-0006.)
     const shape = this.pickShape(cfg, forcedShapeId);
-    this.rows = shape.rows;
-    this.cols = shape.cols;
-    this.void = this.buildVoid(shape);
     this.colourCount = cfg.colourCount;
-    this.grid = this.generateSolvableGrid();
+    this.gridObj = new Grid(shape.rows, shape.cols, buildVoid(shape));
+    this.generateSolvableGrid();
   }
 
-  /** In the rows×cols bounding box. Public — part of BoardRead. */
+  // ---- Grid pass-throughs + BoardRead -------------------------------------
+  // The view and tests still read `board.grid`, `board.rows/cols`, `isVoid`,
+  // etc.; the Board forwards them to its Grid. BoardRead (candyAt / cellsOfColour
+  // / anyBoardColour / inBounds / rows / cols) is satisfied the same way, so the
+  // Special geometry can read the Board directly.
+
+  /** The live cell array (read by the view at rest; tests plant candies here). */
+  get grid(): Cells {
+    return this.gridObj.cells;
+  }
+  get rows() {
+    return this.gridObj.rows;
+  }
+  get cols() {
+    return this.gridObj.cols;
+  }
+  /** Void mask, exposed read-only for the view (ADR-0006). */
+  get void(): readonly boolean[][] {
+    return this.gridObj.void;
+  }
+
   inBounds(row: number, col: number): boolean {
-    return row >= 0 && row < this.rows && col >= 0 && col < this.cols;
+    return this.gridObj.inBounds(row, col);
   }
-
-  /** Whether a Cell is a Void (outside the playable Board Shape). (ADR-0006.) */
   isVoid(row: number, col: number): boolean {
-    return !!this.void[row]?.[col];
+    return this.gridObj.isVoid(row, col);
   }
-
-  /** Count of playable (non-Void) Cells — drives size-scaled objectives. */
   playableCellCount(): number {
-    let n = 0;
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) if (!this.void[r][c]) n++;
-    return n;
+    return this.gridObj.playableCellCount();
   }
-
-  // ---- BoardRead (the read interface the Special geometry consumes) --------
-
-  /** The candy at a Cell, or null (empty / out of bounds). (BoardRead) */
   candyAt(p: Pos): Candy | null {
-    return this.grid[p.row]?.[p.col] ?? null;
+    return this.gridObj.candyAt(p);
   }
-
-  /** Every Cell holding a normal (non-Special) candy of `colour`. (BoardRead) */
   cellsOfColour(colour: Colour): Pos[] {
-    const out: Pos[] = [];
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) {
-        const cell = this.grid[r][c];
-        if (cell?.colour === colour && !cell.special) out.push({ row: r, col: c });
-      }
-    return out;
+    return this.gridObj.cellsOfColour(colour);
   }
-
-  /** A colour present on the board (fallback for a lone Color Bomb). (BoardRead) */
   anyBoardColour(): Colour | null {
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) {
-        const cell = this.grid[r][c];
-        if (cell && cell.colour !== null && !cell.special) return cell.colour;
-      }
-    return null;
+    return this.gridObj.anyBoardColour();
   }
 
   /** Choose this session's ShapeTemplate: a "varied" Challenge draws from the
@@ -123,15 +105,6 @@ export class Board implements BoardRead {
     return { id: cfg.id, rows: cfg.rows, cols: cfg.cols };
   }
 
-  /** Build the Void mask from the template's `isVoid` test (all-false ⇒ rect). */
-  private buildVoid(shape: ShapeTemplate): boolean[][] {
-    return Array.from({ length: shape.rows }, (_, r) =>
-      Array.from({ length: shape.cols }, (_, c) =>
-        shape.isVoid ? shape.isVoid(r, c, shape.rows, shape.cols) : false,
-      ),
-    );
-  }
-
   // ---- generation ---------------------------------------------------------
 
   private newCandy(colour: Colour): Candy {
@@ -139,25 +112,28 @@ export class Board implements BoardRead {
   }
 
   /** Fill with random colours, no pre-existing match, at least one legal move. */
-  private generateSolvableGrid(): Grid {
+  private generateSolvableGrid() {
     for (;;) {
-      const grid = this.fillNoMatches();
-      if (this.hasLegalMoveOn(grid)) return grid;
+      const cells = this.fillNoMatches();
+      if (hasLegalMove(cells, this.gridObj.void, this.rows, this.cols)) {
+        this.gridObj.replace(cells);
+        return;
+      }
     }
   }
 
   /** Greedy fill that never completes a line of 3 as it places candies (so a
    *  freshly generated board has no pre-existing Match — matches are lines only). */
-  private fillNoMatches(): Grid {
-    const grid: Grid = Array.from({ length: this.rows }, () =>
+  private fillNoMatches(): Cells {
+    const cells: Cells = Array.from({ length: this.rows }, () =>
       Array<Candy | null>(this.cols).fill(null),
     );
     // Colour of a placed candy, or null for a Void / not-yet-filled cell.
     const col = (r: number, c: number): Colour | null =>
-      this.inBounds(r, c) ? (grid[r][c]?.colour ?? null) : null;
+      this.inBounds(r, c) ? (cells[r][c]?.colour ?? null) : null;
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
-        if (this.void[r][c]) continue; // Voids never hold a candy (ADR-0006)
+        if (this.isVoid(r, c)) continue; // Voids never hold a candy (ADR-0006)
         const banned = new Set<Colour>();
         if (c >= 2 && col(r, c - 1) !== null && col(r, c - 1) === col(r, c - 2)) {
           banned.add(col(r, c - 1)!);
@@ -166,104 +142,20 @@ export class Board implements BoardRead {
           banned.add(col(r - 1, c)!);
         }
         const choices: Colour[] = [];
-        for (let k = 0; k < this.colourCount; k++)
-          if (!banned.has(k)) choices.push(k);
+        for (let k = 0; k < this.colourCount; k++) if (!banned.has(k)) choices.push(k);
         // fall back to any colour if everything is banned (rare on small palettes)
         if (choices.length === 0)
           for (let k = 0; k < this.colourCount; k++) choices.push(k);
-        grid[r][c] = this.newCandy(this.rng.pick(choices));
+        cells[r][c] = this.newCandy(this.rng.pick(choices));
       }
     }
-    return grid;
-  }
-
-  // ---- match detection ----------------------------------------------------
-
-  private colourAt(grid: Grid, r: number, c: number): Colour | null {
-    if (this.void[r][c]) return null; // Voids never match (ADR-0006)
-    const cell = grid[r][c];
-    // A Color Bomb has no colour and never matches. Other Specials keep their
-    // colour and CAN be lined up in a Match (which clears/chains them) — the
-    // escape valve that keeps boards from clogging with un-fireable Specials.
-    if (!cell || cell.special === "color-bomb") return null;
-    return cell.colour;
-  }
-
-  /** All maximal runs (>=3) of equal colour, horizontal and vertical. */
-  private findRuns(grid: Grid): Run[] {
-    const runs: Run[] = [];
-    // horizontal
-    for (let r = 0; r < this.rows; r++) {
-      let c = 0;
-      while (c < this.cols) {
-        const col = this.colourAt(grid, r, c);
-        let len = 1;
-        while (
-          col !== null &&
-          c + len < this.cols &&
-          this.colourAt(grid, r, c + len) === col
-        )
-          len++;
-        if (col !== null && len >= 3) {
-          runs.push({
-            horizontal: true,
-            cells: Array.from({ length: len }, (_, i) => ({ row: r, col: c + i })),
-          });
-        }
-        c += Math.max(len, 1);
-      }
-    }
-    // vertical
-    for (let c = 0; c < this.cols; c++) {
-      let r = 0;
-      while (r < this.rows) {
-        const col = this.colourAt(grid, r, c);
-        let len = 1;
-        while (
-          col !== null &&
-          r + len < this.rows &&
-          this.colourAt(grid, r + len, c) === col
-        )
-          len++;
-        if (col !== null && len >= 3) {
-          runs.push({
-            horizontal: false,
-            cells: Array.from({ length: len }, (_, i) => ({ row: r + i, col: c })),
-          });
-        }
-        r += Math.max(len, 1);
-      }
-    }
-    return runs;
-  }
-
-  private hasAnyMatch(grid: Grid): boolean {
-    return this.findRuns(grid).length > 0;
-  }
-
-  /**
-   * The full set of matched cells this pass: every cell of every line run.
-   * Matches are straight lines (3+) only — a 2×2 block is not a Match. Used both
-   * to clear and to classify Specials by shape.
-   */
-  private matchedCells(grid: Grid): Pos[] {
-    const seen = new Set<string>();
-    const cells: Pos[] = [];
-    const add = (p: Pos) => {
-      const k = key(p);
-      if (!seen.has(k)) {
-        seen.add(k);
-        cells.push(p);
-      }
-    };
-    for (const run of this.findRuns(grid)) for (const p of run.cells) add(p);
     return cells;
   }
 
-  // ---- legal-move detection ----------------------------------------------
+  // ---- legal-move detection (delegated to match.ts) -----------------------
 
   hasLegalMove(): boolean {
-    return this.hasLegalMoveOn(this.grid);
+    return hasLegalMove(this.gridObj.cells, this.gridObj.void, this.rows, this.cols);
   }
 
   /**
@@ -271,64 +163,7 @@ export class Board implements BoardRead {
    * adjacent pair, or null if the board is deadlocked.
    */
   findHint(): [Pos, Pos] | null {
-    const grid = this.grid;
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        for (const [dr, dc] of [
-          [0, 1],
-          [1, 0],
-        ]) {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (!this.inBounds(nr, nc)) continue;
-          if (this.void[r][c] || this.void[nr][nc]) continue; // no Void swaps
-          this.swapCells(grid, r, c, nr, nc);
-          const legal =
-            this.isSpecialSwap(grid, { row: r, col: c }, { row: nr, col: nc }) ||
-            this.hasAnyMatch(grid);
-          this.swapCells(grid, r, c, nr, nc);
-          if (legal) return [{ row: r, col: c }, { row: nr, col: nc }];
-        }
-      }
-    }
-    return null;
-  }
-
-  private hasLegalMoveOn(grid: Grid): boolean {
-    for (let r = 0; r < this.rows; r++) {
-      for (let c = 0; c < this.cols; c++) {
-        // try swap right and down only (covers all adjacent pairs once)
-        for (const [dr, dc] of [
-          [0, 1],
-          [1, 0],
-        ]) {
-          const nr = r + dr;
-          const nc = c + dc;
-          if (!this.inBounds(nr, nc)) continue;
-          if (this.void[r][c] || this.void[nr][nc]) continue; // no Void swaps
-          this.swapCells(grid, r, c, nr, nc);
-          const legal =
-            this.isSpecialSwap(grid, { row: r, col: c }, { row: nr, col: nc }) ||
-            this.hasAnyMatch(grid);
-          this.swapCells(grid, r, c, nr, nc); // swap back
-          if (legal) return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  private swapCells(grid: Grid, r1: number, c1: number, r2: number, c2: number) {
-    const tmp = grid[r1][c1];
-    grid[r1][c1] = grid[r2][c2];
-    grid[r2][c2] = tmp;
-  }
-
-  /** A swap is legal-by-special if either swapped candy is a Special. */
-  private isSpecialSwap(grid: Grid, a: Pos, b: Pos): boolean {
-    return (
-      grid[a.row][a.col]?.special != null || grid[b.row][b.col]?.special != null
-    );
+    return findFirstLegalMove(this.gridObj.cells, this.gridObj.void, this.rows, this.cols);
   }
 
   // ---- the Move -----------------------------------------------------------
@@ -343,25 +178,21 @@ export class Board implements BoardRead {
       return { steps: [], consumedMove: false, cleared };
     }
     // A Void is not a playable Cell — a swap touching one is a no-op (ADR-0006).
-    if (this.void[a.row][a.col] || this.void[b.row][b.col]) {
+    if (this.isVoid(a.row, a.col) || this.isVoid(b.row, b.col)) {
       return { steps: [], consumedMove: false, cleared };
     }
 
-    const candyA = this.grid[a.row][a.col]!;
-    const candyB = this.grid[b.row][b.col]!;
-    this.swapCells(this.grid, a.row, a.col, b.row, b.col);
+    const candyA = this.gridObj.candyAt(a)!;
+    const candyB = this.gridObj.candyAt(b)!;
+    this.gridObj.swap(a, b);
 
     const specialFire = candyA.special != null || candyB.special != null;
-    const makesMatch = this.hasAnyMatch(this.grid);
+    const makesMatch = this.hasAnyMatch();
 
     if (!specialFire && !makesMatch) {
       // illegal — revert
-      this.swapCells(this.grid, a.row, a.col, b.row, b.col);
-      return {
-        steps: [{ kind: "swap-revert", a, b }],
-        consumedMove: false,
-        cleared,
-      };
+      this.gridObj.swap(a, b);
+      return { steps: [{ kind: "swap-revert", a, b }], consumedMove: false, cleared };
     }
 
     const steps: Step[] = [{ kind: "swap", a, b }];
@@ -385,10 +216,10 @@ export class Board implements BoardRead {
    */
   tryActivate(at: Pos): { steps: Step[]; consumedMove: boolean; cleared: Colour[] } {
     const cleared: Colour[] = [];
-    if (this.void[at.row][at.col]) {
+    if (this.isVoid(at.row, at.col)) {
       return { steps: [], consumedMove: false, cleared };
     }
-    const candy = this.grid[at.row][at.col];
+    const candy = this.gridObj.candyAt(at);
     if (!candy || candy.special == null) {
       return { steps: [], consumedMove: false, cleared };
     }
@@ -404,6 +235,10 @@ export class Board implements BoardRead {
     return { steps, consumedMove: true, cleared };
   }
 
+  private hasAnyMatch(): boolean {
+    return hasAnyMatch(this.gridObj.cells, this.gridObj.void, this.rows, this.cols);
+  }
+
   // ---- Special activation, chaining, and combos ---------------------------
   // Geometry (which Cells a Special/Combo covers, and its Fx) lives in
   // special.ts; the Board owns only the stateful firing: clearing, emitting the
@@ -416,8 +251,8 @@ export class Board implements BoardRead {
    */
   private activateSwappedSpecials(steps: Step[], a: Pos, b: Pos, cleared: Colour[]) {
     this.firing.clear();
-    const ca = this.grid[a.row][a.col];
-    const cb = this.grid[b.row][b.col];
+    const ca = this.gridObj.candyAt(a);
+    const cb = this.gridObj.candyAt(b);
     const aSpecial = ca?.special ?? null;
     const bSpecial = cb?.special ?? null;
 
@@ -440,13 +275,13 @@ export class Board implements BoardRead {
    * from re-detonating a Special already in flight (ADR-0005).
    */
   private fire(bl: Blast, steps: Step[], cleared: Colour[]) {
-    const self = this.grid[bl.origin.row]?.[bl.origin.col];
+    const self = this.gridObj.candyAt(bl.origin);
     if (self) this.firing.add(self.id);
 
     // find specials to chain BEFORE clearing (clearCells nulls them out)
     const chain: { pos: Pos; special: SpecialType }[] = [];
     for (const p of bl.cells) {
-      const cell = this.grid[p.row]?.[p.col];
+      const cell = this.gridObj.candyAt(p);
       if (cell?.special && !this.firing.has(cell.id) && !samePos(p, bl.origin)) {
         this.firing.add(cell.id);
         chain.push({ pos: { ...p }, special: cell.special });
@@ -468,19 +303,16 @@ export class Board implements BoardRead {
    * Clear the given cells. Returns the cells that actually held a Candy and the
    * parallel list of their ids, so the view can animate exactly those sprites.
    */
-  private clearCells(
-    cells: Pos[],
-    cleared: Colour[],
-  ): { cells: Pos[]; ids: number[] } {
+  private clearCells(cells: Pos[], cleared: Colour[]): { cells: Pos[]; ids: number[] } {
     const outCells: Pos[] = [];
     const ids: number[] = [];
     for (const p of cells) {
-      const candy = this.grid[p.row][p.col];
+      const candy = this.gridObj.candyAt(p);
       if (!candy) continue;
       if (candy.colour !== null) cleared.push(candy.colour);
       outCells.push(p);
       ids.push(candy.id);
-      this.grid[p.row][p.col] = null;
+      this.gridObj.set(p, null);
     }
     return { cells: outCells, ids };
   }
@@ -490,7 +322,7 @@ export class Board implements BoardRead {
     let firstPass = true;
     for (;;) {
       // matched cells = the cells of every line run (3+); 2×2 is not a Match
-      const matched = this.matchedCells(this.grid);
+      const matched = matchedCells(this.gridObj.cells, this.gridObj.void, this.rows, this.cols);
 
       if (matched.length > 0) {
         // Decide Special creation by shape before clearing.
@@ -498,37 +330,25 @@ export class Board implements BoardRead {
 
         // Collect every cell to clear, but spare cells that become a Special.
         const spare = new Set(specialsToCreate.map((s) => key(s.at)));
-        const clearCells: Pos[] = [];
-        for (const cell of matched)
-          if (!spare.has(key(cell))) clearCells.push(cell);
+        const toClear: Pos[] = [];
+        for (const cell of matched) if (!spare.has(key(cell))) toClear.push(cell);
 
-        const cleared2 = this.clearCells(dedupe(clearCells), cleared);
-        steps.push({
-          kind: "clear",
-          cells: cleared2.cells,
-          ids: cleared2.ids,
-          bySpecial: false,
-        });
+        const cleared2 = this.clearCells(dedupe(toClear), cleared);
+        steps.push({ kind: "clear", cells: cleared2.cells, ids: cleared2.ids, bySpecial: false });
 
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {
-          const existing = this.grid[s.at.row][s.at.col];
+          const existing = this.gridObj.candyAt(s.at);
           const colour = s.special === "color-bomb" ? null : s.colour;
           const id = existing ? existing.id : this.nextId++;
-          this.grid[s.at.row][s.at.col] = { id, colour, special: s.special };
-          steps.push({
-            kind: "special-create",
-            at: s.at,
-            id,
-            colour,
-            special: s.special,
-          });
+          this.gridObj.set(s.at, { id, colour, special: s.special });
+          steps.push({ kind: "special-create", at: s.at, id, colour, special: s.special });
         }
       }
 
       // Settle the board if anything is empty — this also covers holes left by
       // a swapped Special's blast, which produce no colour run of their own.
-      if (this.hasHoles()) {
+      if (this.gridObj.hasHoles()) {
         this.settle(steps);
       } else if (matched.length === 0) {
         break; // stable: no matches and no holes
@@ -537,19 +357,10 @@ export class Board implements BoardRead {
     }
   }
 
-  /** Drop everything, then refill from the top. */
+  /** Drop everything (gravity), then refill from the top. */
   private settle(steps: Step[]) {
     this.applyGravity(steps);
     this.spawnNew(steps);
-  }
-
-  private hasHoles(): boolean {
-    // A Void is permanently null but is NOT a hole (nothing refills it); only a
-    // playable empty Cell counts, else settle() would loop forever. (ADR-0006.)
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++)
-        if (this.grid[r][c] === null && !this.void[r][c]) return true;
-    return false;
   }
 
   /**
@@ -571,7 +382,7 @@ export class Board implements BoardRead {
     for (const start of matched) {
       if (seen.has(key(start))) continue;
       // BFS the component of same-colour matched cells (4-connected)
-      const colour = this.grid[start.row][start.col]!.colour!;
+      const colour = this.gridObj.candyAt(start)!.colour!;
       const comp: Pos[] = [];
       const stack = [start];
       seen.add(key(start));
@@ -586,11 +397,7 @@ export class Board implements BoardRead {
         ]) {
           const np = { row: p.row + dr, col: p.col + dc };
           const nk = key(np);
-          if (
-            inMatch.has(nk) &&
-            !seen.has(nk) &&
-            this.grid[np.row]?.[np.col]?.colour === colour
-          ) {
+          if (inMatch.has(nk) && !seen.has(nk) && this.gridObj.candyAt(np)?.colour === colour) {
             seen.add(nk);
             stack.push(np);
           }
@@ -627,9 +434,7 @@ export class Board implements BoardRead {
         const q = horiz ? { row: p.row, col: p.col - i } : { row: p.row - i, col: p.col };
         let ok = true;
         for (let j = 0; j < n; j++) {
-          const c = horiz
-            ? { row: q.row, col: q.col + j }
-            : { row: q.row + j, col: q.col };
+          const c = horiz ? { row: q.row, col: q.col + j } : { row: q.row + j, col: q.col };
           if (!set.has(key(c))) {
             ok = false;
             break;
@@ -665,50 +470,26 @@ export class Board implements BoardRead {
     return { at, special, colour };
   }
 
-  /**
-   * Drop candies into empty cells below them. Voids are pass-through air: a candy
-   * above a Void falls straight THROUGH it to the next playable Cell below
-   * (ADR-0006). Appends a fall Step.
-   */
+  /** Gravity: drop each column (the Grid owns the Void pass-through). */
   private applyGravity(steps: Step[]) {
-    const moves: { id: number; from: Pos; to: Pos }[] = [];
-    for (let c = 0; c < this.cols; c++) {
-      let write = -1; // row of the next free playable cell to drop into, or -1
-      for (let r = this.rows - 1; r >= 0; r--) {
-        if (this.void[r][c]) continue; // Void: pass-through, never a slot
-        if (write < 0) write = r; // first playable cell seen from the bottom
-        const candy = this.grid[r][c];
-        if (!candy) continue;
-        if (write !== r) {
-          this.grid[write][c] = candy;
-          this.grid[r][c] = null;
-          moves.push({ id: candy.id, from: { row: r, col: c }, to: { row: write, col: c } });
-        }
-        write = this.nextPlayableAbove(write, c);
-      }
-    }
+    const moves = [];
+    for (let c = 0; c < this.cols; c++) moves.push(...this.gridObj.compactColumn(c));
     if (moves.length) steps.push({ kind: "fall", moves });
   }
 
-  /** The next playable (non-Void) row strictly above `row` in `col`, or -1. */
-  private nextPlayableAbove(row: number, col: number): number {
-    for (let r = row - 1; r >= 0; r--) if (!this.void[r][col]) return r;
-    return -1;
-  }
-
-  /** Fill empty cells with new random candies, entering from the top. */
+  /** Fill empty playable cells with new random candies, entering from the top. */
   private spawnNew(steps: Step[]) {
     const spawns: { id: number; colour: Colour; at: Pos }[] = [];
-    for (let c = 0; c < this.cols; c++) {
+    // column-major (top→bottom within a column) preserves the original drop order
+    for (let c = 0; c < this.cols; c++)
       for (let r = 0; r < this.rows; r++) {
-        if (this.void[r][c]) continue; // Voids never spawn a candy (ADR-0006)
-        if (this.grid[r][c] !== null) continue;
+        const at = { row: r, col: c };
+        if (this.isVoid(r, c) || this.gridObj.candyAt(at) !== null) continue;
         const colour = this.rng.int(this.colourCount);
         const candy = this.newCandy(colour);
-        this.grid[r][c] = candy;
-        spawns.push({ id: candy.id, colour, at: { row: r, col: c } });
+        this.gridObj.set(at, candy);
+        spawns.push({ id: candy.id, colour, at });
       }
-    }
     if (spawns.length) steps.push({ kind: "spawn", spawns });
   }
 
@@ -719,15 +500,9 @@ export class Board implements BoardRead {
    * the playable cells. Returns a reshuffle Step.
    */
   reshuffle(): Step {
-    const movable: Candy[] = [];
-    const slots: Pos[] = [];
-    for (let r = 0; r < this.rows; r++)
-      for (let c = 0; c < this.cols; c++) {
-        const cell = this.grid[r][c];
-        if (!cell) continue;
-        movable.push(cell);
-        slots.push({ row: r, col: c });
-      }
+    const occupied = this.gridObj.occupied();
+    const movable = occupied.map((o) => o.candy);
+    const slots = occupied.map((o) => o.pos);
 
     for (;;) {
       // Fisher–Yates with the seeded rng.
@@ -735,14 +510,28 @@ export class Board implements BoardRead {
         const j = this.rng.int(i + 1);
         [movable[i], movable[j]] = [movable[j], movable[i]];
       }
-      const grid: Grid = this.grid.map((row) => row.map(() => null));
-      slots.forEach((p, k) => (grid[p.row][p.col] = movable[k]));
-      if (!this.hasAnyMatch(grid) && this.hasLegalMoveOn(grid)) {
-        this.grid = grid;
-        return { kind: "reshuffle", layout: grid.map((row) => row.slice()) };
+      const cells: Cells = Array.from({ length: this.rows }, () =>
+        Array<Candy | null>(this.cols).fill(null),
+      );
+      slots.forEach((p, k) => (cells[p.row][p.col] = movable[k]));
+      if (
+        !hasAnyMatch(cells, this.gridObj.void, this.rows, this.cols) &&
+        hasLegalMove(cells, this.gridObj.void, this.rows, this.cols)
+      ) {
+        this.gridObj.replace(cells);
+        return { kind: "reshuffle", layout: this.gridObj.snapshot() };
       }
     }
   }
+}
+
+/** Build the Void mask from a template's `isVoid` test (all-false ⇒ rect). */
+function buildVoid(shape: ShapeTemplate): boolean[][] {
+  return Array.from({ length: shape.rows }, (_, r) =>
+    Array.from({ length: shape.cols }, (_, c) =>
+      shape.isVoid ? shape.isVoid(r, c, shape.rows, shape.cols) : false,
+    ),
+  );
 }
 
 const key = (p: Pos) => `${p.row},${p.col}`;

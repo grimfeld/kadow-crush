@@ -10,7 +10,7 @@ export type Cells = (Candy | null)[][];
 export type VoidMask = boolean[][];
 
 /** A run of matched same-colour candies on one line. */
-export interface Run {
+interface Run {
   cells: Pos[];
   horizontal: boolean;
 }

@@ -99,6 +99,4 @@ export type ObjectiveSpec = {
   quota: number;
 };
 
-export type ObjectiveKind = ObjectiveSpec["kind"];
-
 export type Outcome = "playing" | "won" | "lost";

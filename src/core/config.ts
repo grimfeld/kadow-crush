@@ -120,9 +120,6 @@ export const DEFAULT_CHALLENGE: ChallengeConfig = {
 };
 
 // ---- Back-compat constants -------------------------------------------------
-// The view's layout maths and the unit tests read these globals; they mirror the
-// game definition.
+// The fixed-rectangle unit tests read these; they mirror the game definition.
 export const ROWS = DEFAULT_CHALLENGE.rows;
 export const COLS = DEFAULT_CHALLENGE.cols;
-export const COLOUR_COUNT = DEFAULT_CHALLENGE.colourCount;
-export const MOVES = DEFAULT_CHALLENGE.moves;

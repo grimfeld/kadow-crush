@@ -9,6 +9,7 @@
 import type { KAPLAYCtx } from "kaplay";
 import { DEFAULT_CHALLENGE } from "../core/config.ts";
 import { Game } from "../core/game.ts";
+import { entropySeed } from "../core/rng.ts";
 import type { Pos, Step } from "../core/types.ts";
 import { computeLayout, type Layout } from "./layout.ts";
 import { MusicPlayer } from "./music.ts";
@@ -66,10 +67,6 @@ export class GameView {
     this.startGame();
   }
 
-  private newSeed() {
-    return (Math.random() * 0xffffffff) >>> 0;
-  }
-
   // Board dims of the active board (the session's shape may differ from nominal).
   private get rows() {
     return this.game.board.rows;
@@ -89,7 +86,7 @@ export class GameView {
 
   /** Begin a fresh game: new seeded board, varied shape, switch to play mode.
    *  A fixed `seed` / `forcedShapeId` (dev/test) makes the board reproducible. */
-  startGame(seed = this.newSeed(), forcedShapeId?: string) {
+  startGame(seed = entropySeed(), forcedShapeId?: string) {
     this.game = new Game(seed, DEFAULT_CHALLENGE, forcedShapeId);
     // Layout from the REAL board dims (a varied shape may differ from nominal).
     this.layout = computeLayout(

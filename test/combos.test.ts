@@ -155,3 +155,40 @@ describe("chain detonation", () => {
     expect(origins.size).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("tap to fire a special in place", () => {
+  it("firing a tapped striped clears its row and consumes the action", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = special(9001, "striped-row", 0);
+    const res = b.tryActivate({ row: 4, col: 4 });
+    expect(res.consumedMove).toBe(true);
+    // the striped's whole row (cols 0..8) is cleared by the blast
+    expect(clearedCount(res.steps)).toBeGreaterThanOrEqual(b.cols);
+    // it fired without a swap step
+    expect(res.steps.some((s) => s.kind === "swap")).toBe(false);
+    const fired = res.steps.filter((s) => s.kind === "special-activate");
+    expect(fired.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("tapping a normal candy is a no-op (no move consumed)", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = { id: 7001, colour: 0, special: null };
+    const res = b.tryActivate({ row: 4, col: 4 });
+    expect(res.consumedMove).toBe(false);
+    expect(res.steps).toEqual([]);
+  });
+
+  it("a tapped striped chains a special its blast covers", () => {
+    const b = makeBoard(2);
+    b.grid[4][4] = special(9001, "striped-row", 0);
+    b.grid[4][7] = special(9002, "wrapped", 1); // sits in the fired row
+    const res = b.tryActivate({ row: 4, col: 4 });
+    expect(res.consumedMove).toBe(true);
+    const origins = new Set(
+      res.steps
+        .filter((s) => s.kind === "special-activate")
+        .map((s: any) => `${s.origin.row},${s.origin.col}`),
+    );
+    expect(origins.size).toBeGreaterThanOrEqual(2);
+  });
+});

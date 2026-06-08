@@ -66,6 +66,11 @@ A Match of any other shape (e.g. a 6+ group that isn't a line of 4/5) clears as 
 normal Match and mints **no** Special.
 
 - A Special spawns at the swapped Cell when the Match was swap-made.
+- **Firing a Special**: a Special activates either by being **swapped** (with a
+  normal Candy, or with another Special for a Combo), or by being **double-tapped
+  in place** — tapping a Special twice fires it where it sits, no swap needed.
+  Both cost one Move. A Color Bomb fired in place (no swap partner) clears a
+  Colour present on the Board.
 - **Chaining**: a blast that covers another Special detonates it too, recursively
   (a per-Move firing set prevents double-firing).
 - **Specials still match**: except the Color Bomb (no Colour), a Special keeps its

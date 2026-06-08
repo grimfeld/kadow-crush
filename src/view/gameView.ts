@@ -9,7 +9,7 @@
 import type { KAPLAYCtx } from "kaplay";
 import { DEFAULT_CHALLENGE } from "../core/config.ts";
 import { Game } from "../core/game.ts";
-import type { Pos } from "../core/types.ts";
+import type { Pos, Step } from "../core/types.ts";
 import { computeLayout, type Layout } from "./layout.ts";
 import { MusicPlayer } from "./music.ts";
 import { TutorialScreen } from "./tutorial.ts";
@@ -158,14 +158,18 @@ export class GameView {
       this.hint = null;
       this.dragStart = { pos: cell, px: p.x, py: p.y };
 
-      // tap-tap: if something is selected, try to swap with this tap
+      // tap-tap: a second tap resolves the selection.
       if (this.selected) {
-        if (adjacent(this.selected, cell)) {
+        if (samePos(this.selected, cell) && this.specialAt(cell)) {
+          // double-tap on a Special fires it in place (no swap).
+          this.selected = null;
+          void this.requestActivate(cell);
+        } else if (adjacent(this.selected, cell)) {
           const from = this.selected;
           this.selected = null;
           void this.requestSwap(from, cell);
         } else {
-          this.selected = cell; // reselect
+          this.selected = cell; // reselect (incl. a re-tap on a normal candy)
         }
       } else {
         this.selected = cell;
@@ -196,11 +200,27 @@ export class GameView {
     });
   }
 
+  /** Whether the cell currently holds a Special (drives tap-to-fire). */
+  private specialAt(p: Pos): boolean {
+    return this.game.board.grid[p.row]?.[p.col]?.special != null;
+  }
+
   private async requestSwap(a: Pos, b: Pos) {
+    await this.runMove(() => this.game.playMove(a, b));
+  }
+
+  /** Fire the Special the player double-tapped, then resolve like a Move. */
+  private async requestActivate(at: Pos) {
+    await this.runMove(() => this.game.activateSpecial(at));
+  }
+
+  /** Shared Move flow: lock input, play the resulting Steps, reshuffle if the
+   *  board deadlocks, unlock. `move` is the core call (swap or tap-activate). */
+  private async runMove(move: () => { steps: Step[]; consumedMove: boolean }) {
     this.busy = true;
     this.idle = 0;
     this.hint = null;
-    const { steps } = this.game.playMove(a, b);
+    const { steps } = move();
     await this.player.playSteps(steps);
     if (this.player.isAborted) return; // game replaced; the old one is discarded
     // reshuffle if the resulting board is deadlocked
@@ -299,3 +319,4 @@ const popEase = (t: number) => {
 };
 const adjacent = (a: Pos, b: Pos) =>
   Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
+const samePos = (a: Pos, b: Pos) => a.row === b.row && a.col === b.col;

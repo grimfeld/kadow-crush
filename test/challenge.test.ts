@@ -86,4 +86,23 @@ describe("collect-colours objective", () => {
     game.movesLeft = 0;
     expect(game.outcome()).toBe("lost");
   });
+
+  it("tapping a Special fires it in place and costs one Move", () => {
+    const game = new Game(1, rectChallenge);
+    const before = game.movesLeft;
+    // plant a striped on the game's board and fire it by tap
+    game.board.grid[2][2] = { id: 5000, colour: game.objective.targets[0], special: "striped-row" };
+    const res = game.activateSpecial({ row: 2, col: 2 });
+    expect(res.consumedMove).toBe(true);
+    expect(game.movesLeft).toBe(before - 1);
+  });
+
+  it("tapping a normal candy is a no-op and costs no Move", () => {
+    const game = new Game(1, rectChallenge);
+    const before = game.movesLeft;
+    game.board.grid[2][2] = { id: 5001, colour: 0, special: null };
+    const res = game.activateSpecial({ row: 2, col: 2 });
+    expect(res.consumedMove).toBe(false);
+    expect(game.movesLeft).toBe(before);
+  });
 });

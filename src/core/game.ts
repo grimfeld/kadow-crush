@@ -78,18 +78,35 @@ export class Game {
       return { steps: [], consumedMove: false };
 
     const { steps, consumedMove, cleared } = this.board.trySwap(a, b);
-    if (consumedMove) {
-      this.movesLeft--;
-      for (const colour of cleared) {
-        if (this.objective.collected.has(colour)) {
-          this.objective.collected.set(
-            colour,
-            (this.objective.collected.get(colour) ?? 0) + 1,
-          );
-        }
+    if (consumedMove) this.creditMove(cleared);
+    return { steps, consumedMove };
+  }
+
+  /**
+   * Fire the Special the player tapped, in place (no swap). Like playMove, it
+   * costs one Move and credits any cleared Target Colours. A no-op (and no Move
+   * cost) if the cell holds no Special.
+   */
+  activateSpecial(at: Pos): { steps: Step[]; consumedMove: boolean } {
+    if (this.outcome() !== "playing")
+      return { steps: [], consumedMove: false };
+
+    const { steps, consumedMove, cleared } = this.board.tryActivate(at);
+    if (consumedMove) this.creditMove(cleared);
+    return { steps, consumedMove };
+  }
+
+  /** Spend a Move and credit the cleared Target Colours toward the Objective. */
+  private creditMove(cleared: Colour[]) {
+    this.movesLeft--;
+    for (const colour of cleared) {
+      if (this.objective.collected.has(colour)) {
+        this.objective.collected.set(
+          colour,
+          (this.objective.collected.get(colour) ?? 0) + 1,
+        );
       }
     }
-    return { steps, consumedMove };
   }
 
   /** Reshuffle if the board has no legal move. Returns the Step, or null. */

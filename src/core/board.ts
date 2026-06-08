@@ -342,6 +342,33 @@ export class Board {
     return { steps, consumedMove: true, cleared };
   }
 
+  /**
+   * Fire the Special at `at` in place, without a Swap (the player tapped it).
+   * Returns the ordered Steps. A no-op (consumedMove = false) if the cell is a
+   * Void or does not hold a Special. A lone Color Bomb fired this way clears a
+   * random board Colour (no swap partner to take a Colour from).
+   */
+  tryActivate(at: Pos): { steps: Step[]; consumedMove: boolean; cleared: Colour[] } {
+    const cleared: Colour[] = [];
+    if (this.void[at.row][at.col]) {
+      return { steps: [], consumedMove: false, cleared };
+    }
+    const candy = this.grid[at.row][at.col];
+    if (!candy || candy.special == null) {
+      return { steps: [], consumedMove: false, cleared };
+    }
+
+    const steps: Step[] = [];
+    this.firing.clear();
+    this.detonate(at, candy.special, {}, steps, cleared);
+
+    // Resolve the cascade the blast set off. No swap this pass, so Specials made
+    // by the cascade spawn at their component centre (planSpecials swap = null).
+    this.resolve(steps, { swapA: at, swapB: at }, cleared);
+
+    return { steps, consumedMove: true, cleared };
+  }
+
   // ---- Special activation, chaining, and combos ---------------------------
 
   /**

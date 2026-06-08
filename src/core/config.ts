@@ -114,6 +114,7 @@ export const DEFAULT_CHALLENGE: ChallengeConfig = {
     "See the fruit at the top? That's your goal.",
     "Pop that fruit by lining up 3 of them.",
     "Every one you pop counts toward the number shown.",
+    "Made a power-up? Double-tap it to set it off.",
     "Win: reach the number before your moves hit 0.",
   ],
 };

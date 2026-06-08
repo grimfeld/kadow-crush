@@ -32,7 +32,7 @@ const plan = await page.evaluate(() => {
     for (const c of row)
       if (c && c.colour != null) counts[c.colour] = (counts[c.colour] || 0) + 1;
   const common = +Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-  g[4][3] = { id: 90101, colour: null, special: "color-bomb" };
+  g[4][3] = { id: 90101, colour: null, special: { kind: "color-bomb" } };
   g[4][4] = { id: 90102, colour: common, special: null };
   v["rebuildFromBoard"]();
   const l = v.layout;

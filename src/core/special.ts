@@ -5,7 +5,19 @@
 // rules engine owns the stateful parts (clearing, emitting Steps, and recursive
 // chaining of Specials a blast happens to cover). See CONTEXT.md (Blast).
 
-import type { Candy, Colour, Fx, Pos, SpecialType } from "./types.ts";
+import {
+  colorBomb,
+  striped,
+  stripedRow,
+  stripedCol,
+  wrapped as wrappedSpecial,
+  type Candy,
+  type Colour,
+  type Fx,
+  type Pos,
+  type SpecialKind,
+  type SpecialType,
+} from "./types.ts";
 
 /**
  * The minimal read interface the geometry needs from the Board: its dimensions,
@@ -45,11 +57,9 @@ export interface Blast {
  * Combos override this with their combined shape in `comboPlan`.
  */
 export function fxForSpecial(special: SpecialType): Fx {
-  switch (special) {
-    case "striped-row":
-      return { kind: "wave", axis: "row" };
-    case "striped-col":
-      return { kind: "wave", axis: "col" };
+  switch (special.kind) {
+    case "striped":
+      return { kind: "wave", axis: special.axis };
     case "wrapped":
       return { kind: "flash", radiusCells: 1.1 }; // 3×3
     case "color-bomb":
@@ -84,18 +94,18 @@ function footprintCells(
   opts: { partner?: Pos; colour?: Colour | null },
 ): Pos[] {
   const cells: Pos[] = [];
-  if (special === "striped-row") {
+  if (special.kind === "striped" && special.axis === "row") {
     for (let c = 0; c < b.cols; c++) cells.push({ row: origin.row, col: c });
-  } else if (special === "striped-col") {
+  } else if (special.kind === "striped" && special.axis === "col") {
     for (let r = 0; r < b.rows; r++) cells.push({ row: r, col: origin.col });
-  } else if (special === "wrapped") {
+  } else if (special.kind === "wrapped") {
     for (let dr = -1; dr <= 1; dr++)
       for (let dc = -1; dc <= 1; dc++) {
         const r = origin.row + dr;
         const c = origin.col + dc;
         if (b.inBounds(r, c)) cells.push({ row: r, col: c });
       }
-  } else if (special === "color-bomb") {
+  } else if (special.kind === "color-bomb") {
     // all of a target colour (partner's, a forced colour, or any on the board)
     const target =
       opts.colour ??
@@ -116,38 +126,34 @@ function footprintCells(
  * `a`/`b` are the swapped Cells; effects centre on `b` (the swapped-into Cell).
  */
 export function comboPlan(b: BoardRead, a: Pos, bPos: Pos, ca: Candy, cb: Candy): Blast[] {
-  const types = [ca.special!, cb.special!];
-  const has = (t: SpecialType) => types.includes(t);
-  const both = (t: SpecialType) => types[0] === t && types[1] === t;
-  const stripe = (t: SpecialType) => t === "striped-row" || t === "striped-col";
+  const kinds = [ca.special!.kind, cb.special!.kind];
+  const has = (k: SpecialKind) => kinds.includes(k);
+  const both = (k: SpecialKind) => kinds[0] === k && kinds[1] === k;
   const origin = bPos;
 
   // --- color bomb combos ---
   if (both("color-bomb")) {
     const cells = cappedArea(b, origin, 0.45);
-    return [{ origin, cells, fx: flashOver(origin, cells), special: "color-bomb" }];
+    return [{ origin, cells, fx: flashOver(origin, cells), special: colorBomb }];
   }
-  if (has("color-bomb") && types.some(stripe)) {
+  if (has("color-bomb") && has("striped")) {
     const colour = b.anyBoardColour();
-    return [
-      popPair(a, bPos, origin),
-      ...convertBlasts(b, colour, "striped-row", 1),
-    ];
+    return [popPair(a, bPos, origin), ...convertBlasts(b, colour, stripedRow, 1)];
   }
   if (has("color-bomb") && has("wrapped")) {
     const colour = b.anyBoardColour();
-    return [popPair(a, bPos, origin), ...convertBlasts(b, colour, "wrapped", 0.45)];
+    return [popPair(a, bPos, origin), ...convertBlasts(b, colour, wrappedSpecial, 0.45)];
   }
 
   // --- striped / wrapped combos ---
-  if (stripe(types[0]) && stripe(types[1])) {
+  if (both("striped")) {
     const cross = [
-      ...footprintCells(b, origin, "striped-row", {}),
-      ...footprintCells(b, origin, "striped-col", {}),
+      ...footprintCells(b, origin, stripedRow, {}),
+      ...footprintCells(b, origin, stripedCol, {}),
     ];
-    return [{ origin, cells: cross, fx: { kind: "wave", axis: "cross" }, special: "striped-row" }];
+    return [{ origin, cells: cross, fx: { kind: "wave", axis: "cross" }, special: striped("row") }];
   }
-  if (types.some(stripe) && has("wrapped")) {
+  if (has("striped") && has("wrapped")) {
     const cells: Pos[] = [];
     for (let d = -1; d <= 1; d++) {
       const rr = origin.row + d;
@@ -157,11 +163,11 @@ export function comboPlan(b: BoardRead, a: Pos, bPos: Pos, ca: Candy, cb: Candy)
       if (cc >= 0 && cc < b.cols)
         for (let r = 0; r < b.rows; r++) cells.push({ row: r, col: cc });
     }
-    return [{ origin, cells, fx: { kind: "wave", axis: "cross" }, special: "wrapped" }];
+    return [{ origin, cells, fx: { kind: "wave", axis: "cross" }, special: wrappedSpecial }];
   }
   if (both("wrapped")) {
     return [
-      { origin, cells: squareArea(b, origin, 2), fx: { kind: "flash", radiusCells: 2.5 }, special: "wrapped" },
+      { origin, cells: squareArea(b, origin, 2), fx: { kind: "flash", radiusCells: 2.5 }, special: wrappedSpecial },
     ];
   }
 
@@ -171,7 +177,7 @@ export function comboPlan(b: BoardRead, a: Pos, bPos: Pos, ca: Candy, cb: Candy)
 
 /** Pop just the two swapped Special Cells (a small flash on the swap). */
 function popPair(a: Pos, bPos: Pos, origin: Pos): Blast {
-  return { origin, cells: [a, bPos], fx: { kind: "flash", radiusCells: 1 }, special: "color-bomb" };
+  return { origin, cells: [a, bPos], fx: { kind: "flash", radiusCells: 1 }, special: colorBomb };
 }
 
 /**

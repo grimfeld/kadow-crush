@@ -3,7 +3,7 @@ import { Board } from "../src/core/board.ts";
 import { COLS, ROWS, type ChallengeConfig } from "../src/core/config.ts";
 import { Game } from "../src/core/game.ts";
 import { makeRng } from "../src/core/rng.ts";
-import type { Candy, Step } from "../src/core/types.ts";
+import { colorBomb, stripedRow, type Candy, type Step } from "../src/core/types.ts";
 
 // A FIXED rectangular Challenge for the core-mechanic tests below. The shipped
 // Berry Sort default now varies its shape/size per session (ADR-0006); these
@@ -23,7 +23,7 @@ function findMatchRun(grid: (Candy | null)[][]): string | null {
   // Mirror Board.colourAt: a Color Bomb (null colour) never matches; other
   // coloured candies (incl. striped/wrapped) do.
   const mc = (cell: Candy | null): number | null =>
-    cell && cell.special !== "color-bomb" ? cell.colour : null;
+    cell && cell.special?.kind !== "color-bomb" ? cell.colour : null;
   // horizontal
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c <= COLS - 3; c++) {
@@ -138,7 +138,7 @@ describe("special activation settles the board", () => {
     const board = new Board(makeRng(5), RECT);
     // Plant a horizontal Striped at (3,2) and a normal candy next to it so the
     // swap is special-legal. Give the row varied colours to clear.
-    board.grid[3][2] = { id: 9001, colour: 0, special: "striped-row" };
+    board.grid[3][2] = { id: 9001, colour: 0, special: stripedRow };
     board.grid[3][3] = { id: 9002, colour: 1, special: null };
 
     const res = board.trySwap({ row: 3, col: 2 }, { row: 3, col: 3 });
@@ -154,7 +154,7 @@ describe("special activation settles the board", () => {
 
   it("firing a swapped Color Bomb clears a colour and leaves no holes", () => {
     const board = new Board(makeRng(11), RECT);
-    board.grid[4][3] = { id: 9101, colour: null, special: "color-bomb" };
+    board.grid[4][3] = { id: 9101, colour: null, special: colorBomb };
     board.grid[4][4] = { id: 9102, colour: 2, special: null };
 
     const res = board.trySwap({ row: 4, col: 3 }, { row: 4, col: 4 });

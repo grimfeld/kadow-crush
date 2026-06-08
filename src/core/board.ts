@@ -21,7 +21,17 @@ import {
 } from "./match.ts";
 import type { Rng } from "./rng.ts";
 import { comboPlan, footprint, type Blast, type BoardRead } from "./special.ts";
-import type { Candy, Colour, Pos, SpecialType, Step } from "./types.ts";
+import {
+  colorBomb,
+  stripedCol,
+  stripedRow,
+  wrapped,
+  type Candy,
+  type Colour,
+  type Pos,
+  type SpecialType,
+  type Step,
+} from "./types.ts";
 
 const samePos = (a: Pos, b: Pos) => a.row === b.row && a.col === b.col;
 const adjacent = (a: Pos, b: Pos) =>
@@ -339,7 +349,7 @@ export class Board implements BoardRead {
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {
           const existing = this.gridObj.candyAt(s.at);
-          const colour = s.special === "color-bomb" ? null : s.colour;
+          const colour = s.special.kind === "color-bomb" ? null : s.colour;
           const id = existing ? existing.id : this.nextId++;
           this.gridObj.set(s.at, { id, colour, special: s.special });
           steps.push({ kind: "special-create", at: s.at, id, colour, special: s.special });
@@ -455,9 +465,9 @@ export class Board implements BoardRead {
     // Priority: color-bomb (≥5) > wrapped (T/L) > striped (line of 4). Anything
     // else — a plain line of 3, or a blob with no long line — just clears.
     let special: SpecialType | null = null;
-    if (maxLine >= 5) special = "color-bomb";
-    else if (isLLshape) special = "wrapped";
-    else if (maxLine === 4) special = maxH >= 4 ? "striped-col" : "striped-row";
+    if (maxLine >= 5) special = colorBomb;
+    else if (isLLshape) special = wrapped;
+    else if (maxLine === 4) special = maxH >= 4 ? stripedCol : stripedRow;
     if (!special) return null;
 
     // Prefer the swapped cell as the spawn point if it lies in the component.

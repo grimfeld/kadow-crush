@@ -8,7 +8,7 @@ import {
   type Cells,
   type VoidMask,
 } from "../src/core/match.ts";
-import type { Candy } from "../src/core/types.ts";
+import { colorBomb, stripedRow, type Candy } from "../src/core/types.ts";
 
 // Match detection is now a pure module (no Board, no rng), so it's tested on
 // literal grids — straight lines only, Voids and Color Bombs never match.
@@ -36,7 +36,7 @@ describe("colourAt", () => {
   });
 
   it("a Color Bomb never matches; a striped keeps its colour", () => {
-    const cells: Cells = [[sp(null, "color-bomb"), sp(2, "striped-row")]];
+    const cells: Cells = [[sp(null, colorBomb), sp(2, stripedRow)]];
     const vd: VoidMask = [[false, false]];
     expect(colourAt(cells, vd, 0, 0)).toBeNull();
     expect(colourAt(cells, vd, 0, 1)).toBe(2);

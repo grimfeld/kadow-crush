@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Grid } from "../src/core/grid.ts";
-import type { Candy } from "../src/core/types.ts";
+import { stripedRow, type Candy } from "../src/core/types.ts";
 
 // The Void invariant ADR-0006 flags as its riskiest behaviour — pass-through
 // gravity, where a candy above a Void falls THROUGH it to the next playable Cell
@@ -99,7 +99,7 @@ describe("Grid — Void-aware queries", () => {
 
   it("cellsOfColour skips Specials and Voids", () => {
     const g = gridFrom([[0, 0]]);
-    g.set({ row: 0, col: 1 }, { id: 99, colour: 0, special: "striped-row" });
+    g.set({ row: 0, col: 1 }, { id: 99, colour: 0, special: stripedRow });
     expect(g.cellsOfColour(0)).toEqual([{ row: 0, col: 0 }]); // the Special excluded
   });
 });

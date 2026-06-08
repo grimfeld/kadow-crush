@@ -24,7 +24,7 @@ export interface Run {
 export function colourAt(cells: Cells, vd: VoidMask, r: number, c: number): Colour | null {
   if (vd[r][c]) return null;
   const cell = cells[r][c];
-  if (!cell || cell.special === "color-bomb") return null;
+  if (!cell || cell.special?.kind === "color-bomb") return null;
   return cell.colour;
 }
 

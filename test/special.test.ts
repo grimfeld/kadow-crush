@@ -5,7 +5,16 @@ import {
   fxForSpecial,
   type BoardRead,
 } from "../src/core/special.ts";
-import type { Candy, Colour, Pos, SpecialType } from "../src/core/types.ts";
+import {
+  colorBomb,
+  stripedCol,
+  stripedRow,
+  wrapped,
+  type Candy,
+  type Colour,
+  type Pos,
+  type SpecialType,
+} from "../src/core/types.ts";
 
 // The point of candidate 1: special geometry is now PURE and testable in
 // isolation — we assert the exact set of Cells a Special/Combo covers, not a
@@ -46,22 +55,22 @@ const sortKey = (p: Pos) => p.row * 1000 + p.col;
 const sortCells = (cells: Pos[]) => [...cells].sort((a, b) => sortKey(a) - sortKey(b));
 
 function special(s: SpecialType): Candy {
-  return { id: 1, colour: s === "color-bomb" ? null : 0, special: s };
+  return { id: 1, colour: s.kind === "color-bomb" ? null : 0, special: s };
 }
 
 describe("fxForSpecial", () => {
   it("maps each base Special to its effect geometry", () => {
-    expect(fxForSpecial("striped-row")).toEqual({ kind: "wave", axis: "row" });
-    expect(fxForSpecial("striped-col")).toEqual({ kind: "wave", axis: "col" });
-    expect(fxForSpecial("wrapped")).toEqual({ kind: "flash", radiusCells: 1.1 });
-    expect(fxForSpecial("color-bomb")).toEqual({ kind: "flash", radiusCells: 1.6 });
+    expect(fxForSpecial(stripedRow)).toEqual({ kind: "wave", axis: "row" });
+    expect(fxForSpecial(stripedCol)).toEqual({ kind: "wave", axis: "col" });
+    expect(fxForSpecial(wrapped)).toEqual({ kind: "flash", radiusCells: 1.1 });
+    expect(fxForSpecial(colorBomb)).toEqual({ kind: "flash", radiusCells: 1.6 });
   });
 });
 
 describe("footprint — exact geometry", () => {
   it("striped-row covers the whole row, fx=wave/row", () => {
     const b = solid(5, 4);
-    const bl = footprint(b, { row: 2, col: 1 }, "striped-row");
+    const bl = footprint(b, { row: 2, col: 1 }, stripedRow);
     expect(sortCells(bl.cells)).toEqual([
       { row: 2, col: 0 },
       { row: 2, col: 1 },
@@ -69,12 +78,12 @@ describe("footprint — exact geometry", () => {
       { row: 2, col: 3 },
     ]);
     expect(bl.fx).toEqual({ kind: "wave", axis: "row" });
-    expect(bl.special).toBe("striped-row");
+    expect(bl.special).toEqual(stripedRow);
   });
 
   it("striped-col covers the whole column, fx=wave/col", () => {
     const b = solid(4, 3);
-    const bl = footprint(b, { row: 1, col: 2 }, "striped-col");
+    const bl = footprint(b, { row: 1, col: 2 }, stripedCol);
     expect(sortCells(bl.cells)).toEqual([
       { row: 0, col: 2 },
       { row: 1, col: 2 },
@@ -86,7 +95,7 @@ describe("footprint — exact geometry", () => {
 
   it("wrapped covers a clamped 3×3", () => {
     const b = solid(5, 5);
-    const bl = footprint(b, { row: 0, col: 0 }, "wrapped"); // corner → 2×2
+    const bl = footprint(b, { row: 0, col: 0 }, wrapped); // corner → 2×2
     expect(sortCells(bl.cells)).toEqual([
       { row: 0, col: 0 },
       { row: 0, col: 1 },
@@ -103,7 +112,7 @@ describe("footprint — exact geometry", () => {
       [1, 9, 2],
       [0, 2, 1],
     ]);
-    const bl = footprint(b, { row: 1, col: 1 }, "color-bomb", { partner: { row: 0, col: 1 } });
+    const bl = footprint(b, { row: 1, col: 1 }, colorBomb, { partner: { row: 0, col: 1 } });
     expect(sortCells(bl.cells)).toEqual(
       sortCells([
         { row: 1, col: 1 }, // origin
@@ -119,7 +128,7 @@ describe("comboPlan — exact geometry per stage", () => {
   it("striped + striped is one cross Blast (row ∪ col), fx=wave/cross", () => {
     const b = solid(5, 5);
     const o = { row: 2, col: 2 };
-    const plan = comboPlan(b, { row: 2, col: 1 }, o, special("striped-row"), special("striped-col"));
+    const plan = comboPlan(b, { row: 2, col: 1 }, o, special(stripedRow), special(stripedCol));
     expect(plan).toHaveLength(1);
     const expected = sortCells([
       // row 2
@@ -136,7 +145,7 @@ describe("comboPlan — exact geometry per stage", () => {
   it("wrapped + wrapped is one 5×5 flash Blast", () => {
     const b = solid(9, 9);
     const o = { row: 4, col: 4 };
-    const plan = comboPlan(b, { row: 4, col: 3 }, o, special("wrapped"), special("wrapped"));
+    const plan = comboPlan(b, { row: 4, col: 3 }, o, special(wrapped), special(wrapped));
     expect(plan).toHaveLength(1);
     expect(plan[0].cells).toHaveLength(25); // full 5×5, board big enough
     expect(plan[0].fx).toEqual({ kind: "flash", radiusCells: 2.5 });
@@ -150,7 +159,7 @@ describe("comboPlan — exact geometry per stage", () => {
     ]);
     const a = { row: 0, col: 0 };
     const bp = { row: 0, col: 1 };
-    const plan = comboPlan(b, a, bp, special("color-bomb"), special("striped-row"));
+    const plan = comboPlan(b, a, bp, special(colorBomb), special(stripedRow));
     expect(plan[0].cells).toEqual([a, bp]); // the pop-pair Blast
     const converted = plan.slice(1);
     expect(converted).toHaveLength(4); // one per colour-0 candy
@@ -166,8 +175,8 @@ describe("comboPlan — exact geometry per stage", () => {
       b,
       { row: 3, col: 3 },
       { row: 3, col: 4 },
-      special("color-bomb"),
-      special("color-bomb"),
+      special(colorBomb),
+      special(colorBomb),
     );
     expect(plan).toHaveLength(1);
     expect(plan[0].cells.length).toBeGreaterThan(total * 0.25);

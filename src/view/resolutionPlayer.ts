@@ -398,7 +398,7 @@ export class ResolutionPlayer {
     const R = this.layout.originX + this.layout.boardW;
     const T = this.layout.originY;
     const B = this.layout.originY + this.layout.boardH;
-    const tint = FX_TINT[special];
+    const tint = FX_TINT[special.kind];
 
     if (fx.kind === "wave") {
       if (fx.axis === "row" || fx.axis === "cross")
@@ -409,7 +409,7 @@ export class ResolutionPlayer {
     } else {
       // flash: radius named by the core in Cells → pixels via the layout.
       this.effects.flash(ox, oy, cell * fx.radiusCells * 1.5, tint);
-      if (special === "wrapped") {
+      if (special.kind === "wrapped") {
         for (const p of cleared) {
           const { x, y } = cellCenter(this.layout, p.row, p.col);
           this.particles.burst(x, y, [255, 170, 90], 6);

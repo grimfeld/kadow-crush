@@ -2,7 +2,15 @@ import { describe, expect, it } from "vitest";
 import { Board } from "../src/core/board.ts";
 import { type ChallengeConfig } from "../src/core/config.ts";
 import { makeRng } from "../src/core/rng.ts";
-import type { Candy, SpecialType, Step } from "../src/core/types.ts";
+import {
+  colorBomb,
+  stripedCol,
+  stripedRow,
+  wrapped,
+  type Candy,
+  type SpecialType,
+  type Step,
+} from "../src/core/types.ts";
 
 // A fixed 9×9 rectangle (no varied shape) so planted positions are stable.
 const cfg: ChallengeConfig = {
@@ -48,8 +56,8 @@ describe("special creation by shape", () => {
     expect(res.consumedMove).toBe(true);
     const made = res.steps
       .filter((s) => s.kind === "special-create")
-      .map((s: any) => s.special);
-    expect(made.some((sp: string) => /striped/.test(sp))).toBe(true);
+      .map((s: any) => s.special as SpecialType);
+    expect(made.some((sp) => sp.kind === "striped")).toBe(true);
   });
 
   it("a 5-in-a-line swap creates a color bomb", () => {
@@ -67,8 +75,8 @@ describe("special creation by shape", () => {
     expect(res.consumedMove).toBe(true);
     const made = res.steps
       .filter((s) => s.kind === "special-create")
-      .map((s: any) => s.special);
-    expect(made).toContain("color-bomb");
+      .map((s: any) => s.special as SpecialType);
+    expect(made.some((sp) => sp.kind === "color-bomb")).toBe(true);
   });
 
   it("a 2x2 block is NOT a Match — a swap that only closes one reverts", () => {
@@ -97,8 +105,8 @@ describe("special creation by shape", () => {
 describe("special + special combos", () => {
   it("striped + striped clears a full row AND column (cross)", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-row", 0);
-    b.grid[4][5] = special(9002, "striped-col", 1);
+    b.grid[4][4] = special(9001, stripedRow,0);
+    b.grid[4][5] = special(9002, stripedCol,1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(res.consumedMove).toBe(true);
     // a cross at the origin covers ~rows + cols - 1 cells
@@ -107,8 +115,8 @@ describe("special + special combos", () => {
 
   it("wrapped + wrapped makes a large (5x5) blast", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "wrapped", 0);
-    b.grid[4][5] = special(9002, "wrapped", 1);
+    b.grid[4][4] = special(9001, wrapped,0);
+    b.grid[4][5] = special(9002, wrapped,1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(res.consumedMove).toBe(true);
     expect(clearedCount(res.steps)).toBeGreaterThanOrEqual(16);
@@ -116,8 +124,8 @@ describe("special + special combos", () => {
 
   it("color bomb + color bomb clears a large but capped area (< full board)", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "color-bomb", null);
-    b.grid[4][5] = special(9002, "color-bomb", null);
+    b.grid[4][4] = special(9001, colorBomb,null);
+    b.grid[4][5] = special(9002, colorBomb,null);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(res.consumedMove).toBe(true);
     const total = b.rows * b.cols;
@@ -128,8 +136,8 @@ describe("special + special combos", () => {
 
   it("striped + wrapped fires a 3-row + 3-column blast", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-row", 0);
-    b.grid[4][5] = special(9002, "wrapped", 1);
+    b.grid[4][4] = special(9001, stripedRow,0);
+    b.grid[4][5] = special(9002, wrapped,1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(res.consumedMove).toBe(true);
     // 3 rows + 3 cols on a 9x9 ≈ 45ish; assert clearly big
@@ -148,29 +156,29 @@ function fxTags(steps: Step[]): unknown[] {
 describe("special-activate carries the effect geometry (fx)", () => {
   it("a single striped-row names a row wave", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-row", 0);
+    b.grid[4][4] = special(9001, stripedRow,0);
     const res = b.tryActivate({ row: 4, col: 4 });
     expect(fxTags(res.steps)).toContainEqual({ kind: "wave", axis: "row" });
   });
 
   it("a single striped-col names a col wave", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-col", 0);
+    b.grid[4][4] = special(9001, stripedCol,0);
     const res = b.tryActivate({ row: 4, col: 4 });
     expect(fxTags(res.steps)).toContainEqual({ kind: "wave", axis: "col" });
   });
 
   it("a wrapped names a flash", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "wrapped", 0);
+    b.grid[4][4] = special(9001, wrapped,0);
     const res = b.tryActivate({ row: 4, col: 4 });
     expect(fxTags(res.steps)).toContainEqual({ kind: "flash", radiusCells: 1.1 });
   });
 
   it("striped + striped names a CROSS wave (not a single-axis tag)", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-row", 0);
-    b.grid[4][5] = special(9002, "striped-col", 1);
+    b.grid[4][4] = special(9001, stripedRow,0);
+    b.grid[4][5] = special(9002, stripedCol,1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     // Before C3 this blast lied with a "striped-row" tag and the view guessed
     // the axis back from geometry. Now the core states the truth: a cross.
@@ -179,8 +187,8 @@ describe("special-activate carries the effect geometry (fx)", () => {
 
   it("striped + wrapped (3 rows + 3 cols) also names a CROSS wave", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-row", 0);
-    b.grid[4][5] = special(9002, "wrapped", 1);
+    b.grid[4][4] = special(9001, stripedRow,0);
+    b.grid[4][5] = special(9002, wrapped,1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(fxTags(res.steps)).toContainEqual({ kind: "wave", axis: "cross" });
   });
@@ -190,8 +198,8 @@ describe("chain detonation", () => {
   it("a striped blast that covers another special detonates it too", () => {
     const b = makeBoard(2);
     // striped-row at (4,4); a wrapped sitting in row 4 should also fire
-    b.grid[4][4] = special(9001, "striped-row", 0);
-    b.grid[4][7] = special(9002, "wrapped", 1);
+    b.grid[4][4] = special(9001, stripedRow,0);
+    b.grid[4][7] = special(9002, wrapped,1);
     b.grid[4][3] = { id: 9003, colour: 2, special: null }; // partner to legalise swap
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 3 });
     expect(res.consumedMove).toBe(true);
@@ -208,7 +216,7 @@ describe("chain detonation", () => {
 describe("tap to fire a special in place", () => {
   it("firing a tapped striped clears its row and consumes the action", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-row", 0);
+    b.grid[4][4] = special(9001, stripedRow,0);
     const res = b.tryActivate({ row: 4, col: 4 });
     expect(res.consumedMove).toBe(true);
     // the striped's whole row (cols 0..8) is cleared by the blast
@@ -229,8 +237,8 @@ describe("tap to fire a special in place", () => {
 
   it("a tapped striped chains a special its blast covers", () => {
     const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "striped-row", 0);
-    b.grid[4][7] = special(9002, "wrapped", 1); // sits in the fired row
+    b.grid[4][4] = special(9001, stripedRow,0);
+    b.grid[4][7] = special(9002, wrapped,1); // sits in the fired row
     const res = b.tryActivate({ row: 4, col: 4 });
     expect(res.consumedMove).toBe(true);
     const origins = new Set(

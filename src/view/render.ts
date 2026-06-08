@@ -48,7 +48,7 @@ export function drawCandy(
   // an explicit white the prior fill/text colour bleeds in and darkens it.
   const white = rgb(k, 255, 255, 255);
 
-  const isBomb = special === "color-bomb";
+  const isBomb = special?.kind === "color-bomb";
 
   const fill = isBomb ? BOMB_FILL : COLOUR_THEMES[colour ?? 0].fill;
 
@@ -76,9 +76,9 @@ export function drawCandy(
         color: white,
       });
     }
-    if (special === "striped-row" || special === "striped-col") {
-      drawStripes(k, x, y, half, special === "striped-row");
-    } else if (special === "wrapped") {
+    if (special?.kind === "striped") {
+      drawStripes(k, x, y, half, special.axis === "row");
+    } else if (special?.kind === "wrapped") {
       drawWrapper(k, x, y, half);
     }
   }

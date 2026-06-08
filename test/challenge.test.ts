@@ -3,6 +3,7 @@ import { Board } from "../src/core/board.ts";
 import { DEFAULT_CHALLENGE, type ChallengeConfig } from "../src/core/config.ts";
 import { Game } from "../src/core/game.ts";
 import { makeRng } from "../src/core/rng.ts";
+import { stripedRow } from "../src/core/types.ts";
 
 // A fixed rectangular collect challenge (no varied shape) so dimensions are
 // deterministic for the config-drives-board assertions.
@@ -91,7 +92,7 @@ describe("collect-colours objective", () => {
     const game = new Game(1, rectChallenge);
     const before = game.movesLeft;
     // plant a striped on the game's board and fire it by tap
-    game.board.grid[2][2] = { id: 5000, colour: game.objective.targets[0], special: "striped-row" };
+    game.board.grid[2][2] = { id: 5000, colour: game.objective.targets[0], special: stripedRow };
     const res = game.activateSpecial({ row: 2, col: 2 });
     expect(res.consumedMove).toBe(true);
     expect(game.movesLeft).toBe(before - 1);

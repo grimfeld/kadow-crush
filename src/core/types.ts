@@ -6,15 +6,25 @@
 /** A Colour is identified by its index 0..COLOUR_COUNT-1. */
 export type Colour = number;
 
+/**
+ * A Special's kind — exactly three (CONTEXT.md). Striped carries its axis as
+ * data rather than splitting into two values, so consumers read one concept and
+ * its orientation instead of re-pairing "striped-row"/"striped-col" everywhere.
+ * Compare by `.kind` (it's an object — never `===` a whole SpecialType).
+ */
 export type SpecialType =
-  | "striped-row" // clears its row (from 4-in-a-row horizontal)
-  | "striped-col" // clears its column (from 4-in-a-row vertical)
-  | "color-bomb" // clears all of one colour (from 5-in-a-line)
-  | "wrapped"; // 3x3 explosion (from a T/L shape)
+  | { kind: "striped"; axis: "row" | "col" } // clears its row/col (from a line of 4)
+  | { kind: "color-bomb" } // clears all of one colour (from a line of 5)
+  | { kind: "wrapped" }; // 3x3 explosion (from a T/L shape)
 
-/** Whether a special fires along a line, so the view can pick row vs col FX. */
-export const isStriped = (s: SpecialType | null): boolean =>
-  s === "striped-row" || s === "striped-col";
+export type SpecialKind = SpecialType["kind"];
+
+/** Constructors — a single place that builds each SpecialType value. */
+export const stripedRow: SpecialType = { kind: "striped", axis: "row" };
+export const stripedCol: SpecialType = { kind: "striped", axis: "col" };
+export const wrapped: SpecialType = { kind: "wrapped" };
+export const colorBomb: SpecialType = { kind: "color-bomb" };
+export const striped = (axis: "row" | "col"): SpecialType => ({ kind: "striped", axis });
 
 /**
  * The geometry of a Blast's visual effect, named by the core for the view to

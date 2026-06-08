@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import { Board } from "../src/core/board.ts";
+import { stripedRow } from "../src/core/types.ts";
 import {
   SHAPE_TEMPLATES,
   type ChallengeConfig,
@@ -106,7 +107,7 @@ describe("voids are pass-through air for gravity", () => {
     board.grid[4][1] = null;
     // Plant a striped at (4,0) and a normal neighbour so the swap is legal and
     // its blast clears row 4 — triggering gravity + refill over the whole board.
-    board.grid[4][0] = { id: 8001, colour: 0, special: "striped-row" };
+    board.grid[4][0] = { id: 8001, colour: 0, special: stripedRow };
     board.grid[4][2] = { id: 8002, colour: 1, special: null };
     const res = board.trySwap({ row: 4, col: 0 }, { row: 3, col: 0 });
     expect(res.consumedMove).toBe(true);

@@ -14,6 +14,7 @@ import { cellCenter, computeLayout, type Layout } from "./layout.ts";
 import { MusicPlayer } from "./music.ts";
 import { TutorialScreen } from "./tutorial.ts";
 import { Hud } from "./hud.ts";
+import { EndSequence } from "./endSequence.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import { Effects } from "./effects.ts";
 import {
@@ -43,9 +44,6 @@ const FALL_MS = 280;
 // Beats inserted between cascade phases so each clear is legible.
 const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
-const END_OVERLAY_DELAY = 0.9; // seconds to watch the final board before the modal
-const WIN_CELEBRATE_SECS = 2.6; // how long confetti keeps showering on a win
-const WIN_WAVE_GAP = 0.4; // gap between confetti rain waves
 const HINT_DELAY = 3.0; // seconds idle before the move hint appears
 
 export class GameView {
@@ -73,22 +71,14 @@ export class GameView {
   private hint: [Pos, Pos] | null = null;
   // Cascade depth within the current Resolution, for escalating praise words.
   private cascadeDepth = 0;
-  private prevOutcome: "playing" | "won" | "lost" = "playing";
-  // Seconds to linger on the final board before the end overlay appears, so the
-  // last clears/falls are visible. Counts down from END_OVERLAY_DELAY once the
-  // outcome is decided.
-  private endHold = 0;
-  // Win celebration: seconds of confetti showers still to fire, a timer to space
-  // the waves out, and a 0→1 ramp that pops the overlay in.
-  private celebrateLeft = 0;
-  private nextWaveIn = 0;
-  private overlayPop = 0;
+  private endSeq: EndSequence;
 
   constructor(private k: KAPLAYCtx) {
     this.tutorial = new TutorialScreen(k);
     this.hud = new Hud(k);
     this.particles = new Particles(k);
     this.effects = new Effects(k);
+    this.endSeq = new EndSequence(k, this.particles);
     this.bind();
     // advance particles + effects every frame
     k.onUpdate(() => {
@@ -255,11 +245,7 @@ export class GameView {
     this.dragStart = null;
     this.aborted = false;
     this.busy = false;
-    this.prevOutcome = "playing";
-    this.endHold = 0;
-    this.celebrateLeft = 0;
-    this.nextWaveIn = 0;
-    this.overlayPop = 0;
+    this.endSeq.reset();
     this.sprites.clear();
     this.rebuildFromBoard();
     this.mode = "play";
@@ -562,7 +548,7 @@ export class GameView {
 
       // End-of-game overlay: tap Replay to start a fresh game.
       if (this.game.outcome() !== "playing") {
-        if (!this.busy && this.endHold <= 0 && this.hud.replayHit(p.x, p.y)) {
+        if (!this.busy && this.endSeq.showOverlay() && this.hud.replayHit(p.x, p.y)) {
           playSound("swap");
           this.startGame();
         }
@@ -647,41 +633,10 @@ export class GameView {
       this.hint = null;
     }
     // Once the outcome is decided and the last Resolution has finished
-    // animating, hold on the final board for a beat before the modal.
+    // animating, run the end-of-game sequence (linger → overlay, win confetti).
     if (this.game.outcome() !== "playing" && !this.busy) {
-      if (this.prevOutcome === "playing") {
-        // first frame the result is visible at rest — begin the linger
-        this.endHold = END_OVERLAY_DELAY;
-        const won = this.game.outcome() === "won";
-        if (won) {
-          playSound("win");
-          this.particles.confettiRain(this.k.width(), 80);
-          this.particles.confettiPop(this.k.width() / 2, this.k.height() * 0.55, 48);
-          this.celebrateLeft = WIN_CELEBRATE_SECS;
-          this.nextWaveIn = WIN_WAVE_GAP;
-        } else {
-          playSound("lose");
-        }
-        this.prevOutcome = this.game.outcome();
-      } else if (this.endHold > 0) {
-        this.endHold = Math.max(0, this.endHold - dtSeconds);
-      }
-    }
-
-    // Confetti showers + a second celebratory pop when the modal appears.
-    if (this.celebrateLeft > 0) {
-      this.celebrateLeft = Math.max(0, this.celebrateLeft - dtSeconds);
-      this.nextWaveIn -= dtSeconds;
-      if (this.nextWaveIn <= 0) {
-        this.particles.confettiRain(this.k.width(), 50);
-        this.nextWaveIn = WIN_WAVE_GAP;
-      }
-    }
-    // Overlay pop-in ramp (eased in draw); only climbs once the modal is shown.
-    if (this.game.outcome() === "won" && !this.busy && this.endHold <= 0) {
-      if (this.overlayPop === 0)
-        this.particles.confettiPop(this.k.width() / 2, this.k.height() / 2, 40);
-      this.overlayPop = Math.min(1, this.overlayPop + dtSeconds * 3.5);
+      if (!this.endSeq.hasBegun) this.endSeq.begin(this.game.outcome() === "won");
+      this.endSeq.advance(dtSeconds);
     }
   }
 
@@ -811,10 +766,11 @@ export class GameView {
     this.effects.draw();
 
     const outcome = this.game.outcome();
-    if (outcome !== "playing" && !this.busy && this.endHold <= 0) {
+    if (outcome !== "playing" && !this.busy && this.endSeq.showOverlay()) {
       const won = outcome === "won";
+      const ramp = this.endSeq.overlayRamp();
       // Win modal pops in with a slight overshoot; lose modal just appears.
-      this.hud.drawOverlay(won, won ? popEase(this.overlayPop) : 1, this.overlayPop);
+      this.hud.drawOverlay(won, won ? popEase(ramp) : 1, ramp);
     }
 
     // Particles last so clear-bursts and the win confetti shower render on top.

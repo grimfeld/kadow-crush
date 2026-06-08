@@ -71,44 +71,26 @@ describe("special creation by shape", () => {
     expect(made).toContain("color-bomb");
   });
 
-  it("a 2x2 block makes NO special (ADR-0007 — it just clears)", () => {
+  it("a 2x2 block is NOT a Match — a swap that only closes one reverts", () => {
     const b = makeBoard(4);
-    // Fully isolate: paint the WHOLE board a 2-colour checkerboard of colours
-    // 2 and 3 (no 3-in-a-line, no 2×2) so the only match is the one we plant.
+    // Paint a 3-colour diagonal background ((r+c)%3): adjacent cells always
+    // differ and no straight line of 3 can exist, whatever a single swap moves.
     for (let r = 0; r < b.rows; r++)
       for (let c = 0; c < b.cols; c++)
-        b.grid[r][c] = { id: r * 100 + c, colour: (r + c) % 2 === 0 ? 2 : 3, special: null };
-    // Plant a colour-0 2×2 minus one corner; a colour-0 above swaps down to close
-    // it. (1,1),(2,1),(2,2) plus (0,2)→(1,2) makes the 2×2 at rows 1-2, cols 1-2.
-    b.grid[1][1] = { id: 9911, colour: 0, special: null };
-    b.grid[2][1] = { id: 9921, colour: 0, special: null };
-    b.grid[2][2] = { id: 9922, colour: 0, special: null };
-    b.grid[0][2] = { id: 9902, colour: 0, special: null };
+        b.grid[r][c] = { id: r * 100 + c, colour: (r + c) % 3, special: null };
+    // Plant a colour-4 2×2 minus one corner; the colour-4 above swaps down to
+    // close it. (1,1),(2,1),(2,2) plus (0,2)→(1,2) would complete a 2×2 at rows
+    // 1-2, cols 1-2 — but a 2×2 is no longer a Match, so the swap is illegal and
+    // reverts (the displaced background candy makes no line either).
+    b.grid[1][1] = { id: 9911, colour: 4, special: null };
+    b.grid[2][1] = { id: 9921, colour: 4, special: null };
+    b.grid[2][2] = { id: 9922, colour: 4, special: null };
+    b.grid[0][2] = { id: 9902, colour: 4, special: null };
     const res = b.trySwap({ row: 0, col: 2 }, { row: 1, col: 2 });
-    expect(res.consumedMove).toBe(true);
-    const made = res.steps.filter((s) => s.kind === "special-create");
-    expect(made.length).toBe(0);
-  });
-
-  it("freshly generated boards contain no 2x2 same-colour block", () => {
-    for (let seed = 1; seed <= 50; seed++) {
-      const b = makeBoard(seed);
-      let square = false;
-      for (let r = 0; r < b.rows - 1 && !square; r++)
-        for (let c = 0; c < b.cols - 1; c++) {
-          const col = b.grid[r][c]?.colour;
-          if (
-            col != null &&
-            b.grid[r][c + 1]?.colour === col &&
-            b.grid[r + 1][c]?.colour === col &&
-            b.grid[r + 1][c + 1]?.colour === col
-          ) {
-            square = true;
-            break;
-          }
-        }
-      expect(square).toBe(false);
-    }
+    expect(res.consumedMove).toBe(false);
+    expect(res.steps).toEqual([
+      { kind: "swap-revert", a: { row: 0, col: 2 }, b: { row: 1, col: 2 } },
+    ]);
   });
 });
 

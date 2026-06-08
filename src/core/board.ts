@@ -111,8 +111,8 @@ export class Board {
     }
   }
 
-  /** Greedy fill that never completes a line of 3 OR a 2×2 as it places candies
-   *  (so a freshly generated board has no pre-existing Match of any shape). */
+  /** Greedy fill that never completes a line of 3 as it places candies (so a
+   *  freshly generated board has no pre-existing Match — matches are lines only). */
   private fillNoMatches(): Grid {
     const grid: Grid = Array.from({ length: this.rows }, () =>
       Array<Candy | null>(this.cols).fill(null),
@@ -128,16 +128,6 @@ export class Board {
           banned.add(col(r, c - 1)!);
         }
         if (r >= 2 && col(r - 1, c) !== null && col(r - 1, c) === col(r - 2, c)) {
-          banned.add(col(r - 1, c)!);
-        }
-        // would this complete a 2×2 with the three cells up-left of it?
-        if (
-          r >= 1 &&
-          c >= 1 &&
-          col(r - 1, c) !== null &&
-          col(r - 1, c) === col(r, c - 1) &&
-          col(r - 1, c) === col(r - 1, c - 1)
-        ) {
           banned.add(col(r - 1, c)!);
         }
         const choices: Colour[] = [];
@@ -212,30 +202,14 @@ export class Board {
     return runs;
   }
 
-  /** All top-left corners of a 2×2 same-colour block (a "square match"). */
-  private findSquares(grid: Grid): Pos[] {
-    const out: Pos[] = [];
-    for (let r = 0; r < this.rows - 1; r++)
-      for (let c = 0; c < this.cols - 1; c++) {
-        const col = this.colourAt(grid, r, c);
-        if (
-          col !== null &&
-          this.colourAt(grid, r, c + 1) === col &&
-          this.colourAt(grid, r + 1, c) === col &&
-          this.colourAt(grid, r + 1, c + 1) === col
-        )
-          out.push({ row: r, col: c });
-      }
-    return out;
-  }
-
   private hasAnyMatch(grid: Grid): boolean {
-    return this.findRuns(grid).length > 0 || this.findSquares(grid).length > 0;
+    return this.findRuns(grid).length > 0;
   }
 
   /**
-   * The full set of matched cells this pass: every run cell plus every 2×2
-   * square cell. Used both to clear and to classify Specials by shape.
+   * The full set of matched cells this pass: every cell of every line run.
+   * Matches are straight lines (3+) only — a 2×2 block is not a Match. Used both
+   * to clear and to classify Specials by shape.
    */
   private matchedCells(grid: Grid): Pos[] {
     const seen = new Set<string>();
@@ -248,12 +222,6 @@ export class Board {
       }
     };
     for (const run of this.findRuns(grid)) for (const p of run.cells) add(p);
-    for (const sq of this.findSquares(grid)) {
-      add(sq);
-      add({ row: sq.row, col: sq.col + 1 });
-      add({ row: sq.row + 1, col: sq.col });
-      add({ row: sq.row + 1, col: sq.col + 1 });
-    }
     return cells;
   }
 
@@ -635,7 +603,7 @@ export class Board {
   private resolve(steps: Step[], swap: { swapA: Pos; swapB: Pos }, cleared: Colour[]) {
     let firstPass = true;
     for (;;) {
-      // matched cells = run cells (lines) + square (2×2) cells
+      // matched cells = the cells of every line run (3+); 2×2 is not a Match
       const matched = this.matchedCells(this.grid);
 
       if (matched.length > 0) {
@@ -700,10 +668,10 @@ export class Board {
 
   /**
    * Choose where Specials are created from this pass's matched cells, by SHAPE.
-   * The matched set (line runs + 2×2 squares) is split into connected
-   * same-colour components; each yields at most one Special, classified by
-   * priority: color-bomb (line ≥5) > wrapped (T/L) > striped (line of 4). A 2×2
-   * or 6+ blob that isn't a line of 4/5 just clears, no Special (ADR-0007).
+   * The matched set (line runs only) is split into connected same-colour
+   * components; each yields at most one Special, classified by priority:
+   * color-bomb (line ≥5) > wrapped (T/L) > striped (line of 4). A plain line of
+   * 3, or a 6+ blob that isn't a long line, just clears — no Special (ADR-0007).
    */
   private planSpecials(
     matched: Pos[],
@@ -794,7 +762,7 @@ export class Board {
     const maxLine = Math.max(maxH, maxV);
 
     // Priority: color-bomb (≥5) > wrapped (T/L) > striped (line of 4). Anything
-    // else — a plain 3, a 2×2 block, a 6+ blob with no long line — just clears.
+    // else — a plain line of 3, or a blob with no long line — just clears.
     let special: SpecialType | null = null;
     if (maxLine >= 5) special = "color-bomb";
     else if (isLLshape) special = "wrapped";

@@ -43,12 +43,13 @@ red, blue, green, yellow, purple). Two Candies match only if they share a Colour
 
 ### Match
 A straight line (horizontal or vertical) of 3 or more Candies sharing a Colour.
-Matches clear from the Board.
+Matches clear from the Board. **Lines only** — a 2×2 block (or any non-line shape)
+is _not_ a Match and does not clear.
 
 ### Swap
 The player action: exchange two orthogonally-adjacent Candies. A Swap is **legal**
-only if it produces at least one Match. An illegal Swap reverts (the two Candies
-bounce back).
+only if it produces at least one Match (or moves a Special — see Special). An
+illegal Swap reverts (the two Candies bounce back).
 
 ### Special
 A Candy with an effect beyond colour-matching. There are exactly three, created by
@@ -61,8 +62,8 @@ the **shape** of a Match:
 | Line of 5+ | Color Bomb | Clears all Candies of one Colour (its swap partner's) |
 | T / L intersection | Wrapped | **3×3** explosion around it |
 
-A match of any other shape (e.g. a 2×2 block or a 6+ group that isn't a line of
-4/5) clears as a normal Match and mints **no** Special.
+A Match of any other shape (e.g. a 6+ group that isn't a line of 4/5) clears as a
+normal Match and mints **no** Special.
 
 - A Special spawns at the swapped Cell when the Match was swap-made.
 - **Chaining**: a blast that covers another Special detonates it too, recursively

@@ -5,7 +5,6 @@
 
 import type { KAPLAYCtx } from "kaplay";
 import type { ChallengeConfig } from "../core/config.ts";
-import { objectiveSummary } from "./menu.ts";
 import { emojiText } from "./text.ts";
 import { BG_BOTTOM, BG_TOP, TEXT_ACCENT, TEXT_DARK } from "./theme.ts";
 
@@ -70,8 +69,9 @@ export class TutorialScreen {
     let y = this.backRect.h + H * 0.01;
 
     // --- Title + goal summary ---
+    const spec = cfg.objective;
     k.drawText({
-      text: cfg.name,
+      text: "How to Play",
       pos: k.vec2(W / 2, y),
       size: Math.min(38, W * 0.09),
       color: accent,
@@ -79,7 +79,7 @@ export class TutorialScreen {
     });
     y += Math.min(38, W * 0.09) + 8;
     k.drawText({
-      text: objectiveSummary(cfg),
+      text: `Collect ${spec.quota} of each fruit before you run out of moves.`,
       pos: k.vec2(W / 2, y),
       size: Math.min(18, W * 0.042),
       color: dark,

@@ -4,15 +4,14 @@ import { type ChallengeConfig } from "../src/core/config.ts";
 import { makeRng } from "../src/core/rng.ts";
 import type { Candy, SpecialType, Step } from "../src/core/types.ts";
 
+// A fixed 9×9 rectangle (no varied shape) so planted positions are stable.
 const cfg: ChallengeConfig = {
   id: "test-combo",
-  name: "Test",
-  blurb: "",
   rows: 9,
   cols: 9,
   colourCount: 5,
   moves: 50,
-  objective: { kind: "score", target: 999999 },
+  objective: { kind: "collect-colours", targetCount: 1, quota: 999 },
 };
 
 function special(id: number, s: SpecialType, colour: number | null): Candy {
@@ -38,7 +37,6 @@ describe("special creation by shape", () => {
     const b = makeBoard(3);
     // Build an isolated patch: three colour-0 in row 2 (cols 1..3) and a fourth
     // colour-0 below col 4; swap it up to complete 0,0,0,0 across cols 1..4.
-    // Neighbouring cells set to colour 1 so no other match forms.
     for (let r = 1; r <= 3; r++)
       for (let c = 0; c <= 5; c++) b.grid[r][c] = { id: r * 10 + c, colour: 1, special: null };
     b.grid[2][1] = { id: 201, colour: 0, special: null };
@@ -53,27 +51,43 @@ describe("special creation by shape", () => {
       .map((s: any) => s.special);
     expect(made.some((sp: string) => /striped/.test(sp))).toBe(true);
   });
-});
 
-describe("fish from a 2x2 square", () => {
-  it("a swap forming a 2x2 block (no line) creates a fish", () => {
-    const b = makeBoard(4);
-    // isolate a patch in rows 1..2 so only the intended square forms
-    for (let r = 0; r <= 3; r++)
-      for (let c = 0; c <= 4; c++) b.grid[r][c] = { id: r * 10 + c, colour: 1, special: null };
-    // colour-0 at (1,1),(2,1),(2,2); a colour-0 at (1,3) swaps left into (1,2)
-    b.grid[1][1] = { id: 211, colour: 0, special: null };
-    b.grid[2][1] = { id: 221, colour: 0, special: null };
-    b.grid[2][2] = { id: 222, colour: 0, special: null };
-    b.grid[1][2] = { id: 212, colour: 1, special: null };
-    b.grid[1][3] = { id: 213, colour: 0, special: null };
-    // guard against an accidental 3-line: keep row1 cols beyond 3 colour 1
-    const res = b.trySwap({ row: 1, col: 3 }, { row: 1, col: 2 });
+  it("a 5-in-a-line swap creates a color bomb", () => {
+    const b = makeBoard(3);
+    for (let r = 1; r <= 3; r++)
+      for (let c = 0; c <= 6; c++) b.grid[r][c] = { id: r * 10 + c, colour: 1, special: null };
+    // four colour-0 across cols 1..4 in row 2, and a fifth below col 5
+    b.grid[2][1] = { id: 201, colour: 0, special: null };
+    b.grid[2][2] = { id: 202, colour: 0, special: null };
+    b.grid[2][3] = { id: 203, colour: 0, special: null };
+    b.grid[2][4] = { id: 204, colour: 0, special: null };
+    b.grid[2][5] = { id: 205, colour: 1, special: null };
+    b.grid[3][5] = { id: 305, colour: 0, special: null };
+    const res = b.trySwap({ row: 3, col: 5 }, { row: 2, col: 5 });
     expect(res.consumedMove).toBe(true);
     const made = res.steps
       .filter((s) => s.kind === "special-create")
       .map((s: any) => s.special);
-    expect(made).toContain("fish");
+    expect(made).toContain("color-bomb");
+  });
+
+  it("a 2x2 block makes NO special (ADR-0007 — it just clears)", () => {
+    const b = makeBoard(4);
+    // Fully isolate: paint the WHOLE board a 2-colour checkerboard of colours
+    // 2 and 3 (no 3-in-a-line, no 2×2) so the only match is the one we plant.
+    for (let r = 0; r < b.rows; r++)
+      for (let c = 0; c < b.cols; c++)
+        b.grid[r][c] = { id: r * 100 + c, colour: (r + c) % 2 === 0 ? 2 : 3, special: null };
+    // Plant a colour-0 2×2 minus one corner; a colour-0 above swaps down to close
+    // it. (1,1),(2,1),(2,2) plus (0,2)→(1,2) makes the 2×2 at rows 1-2, cols 1-2.
+    b.grid[1][1] = { id: 9911, colour: 0, special: null };
+    b.grid[2][1] = { id: 9921, colour: 0, special: null };
+    b.grid[2][2] = { id: 9922, colour: 0, special: null };
+    b.grid[0][2] = { id: 9902, colour: 0, special: null };
+    const res = b.trySwap({ row: 0, col: 2 }, { row: 1, col: 2 });
+    expect(res.consumedMove).toBe(true);
+    const made = res.steps.filter((s) => s.kind === "special-create");
+    expect(made.length).toBe(0);
   });
 
   it("freshly generated boards contain no 2x2 same-colour block", () => {
@@ -98,32 +112,6 @@ describe("fish from a 2x2 square", () => {
   });
 });
 
-describe("fish targeting", () => {
-  it("a fish flies to the nearest objective, not the top-left", () => {
-    // jelly challenge with jelly at two corners; a fish near bottom-right must
-    // target the near corner. We read the fish-fly step's destination.
-    const jcfg: ChallengeConfig = {
-      ...cfg,
-      objective: { kind: "clear-jelly" },
-      jelly: { layers: 1, pattern: "checker" },
-    };
-    const b = new Board(makeRng(1), jcfg);
-    // clear all jelly except two cells: far (0,0) and near the fish (8,8)
-    for (let r = 0; r < b.rows; r++)
-      for (let c = 0; c < b.cols; c++) b.jelly[r][c] = 0;
-    b.jelly[0][0] = 1; // far corner
-    b.jelly[6][6] = 1; // near the fish's landing cell (8,7)
-    // plant a fish at (8,8) and a partner to swap it (fish lands at (8,7))
-    b.grid[8][8] = special(7000, "fish", 0);
-    b.grid[8][7] = { id: 7001, colour: 1, special: null };
-    const res = b.trySwap({ row: 8, col: 8 }, { row: 8, col: 7 });
-    const fly = res.steps.find((s) => s.kind === "fish-fly") as any;
-    expect(fly).toBeTruthy();
-    // nearest jellied cell to the fish is (6,6), not the far (0,0)
-    expect(fly.to).toEqual({ row: 6, col: 6 });
-  });
-});
-
 describe("special + special combos", () => {
   it("striped + striped clears a full row AND column (cross)", () => {
     const b = makeBoard(2);
@@ -131,7 +119,7 @@ describe("special + special combos", () => {
     b.grid[4][5] = special(9002, "striped-col", 1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(res.consumedMove).toBe(true);
-    // a cross at the origin covers ~rows + cols - 1 cells (minus obstacles)
+    // a cross at the origin covers ~rows + cols - 1 cells
     expect(clearedCount(res.steps)).toBeGreaterThanOrEqual(b.rows + b.cols - 4);
   });
 
@@ -141,7 +129,6 @@ describe("special + special combos", () => {
     b.grid[4][5] = special(9002, "wrapped", 1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(res.consumedMove).toBe(true);
-    // a 5x5 around the origin = up to 25 cells
     expect(clearedCount(res.steps)).toBeGreaterThanOrEqual(16);
   });
 
@@ -163,32 +150,8 @@ describe("special + special combos", () => {
     b.grid[4][5] = special(9002, "wrapped", 1);
     const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
     expect(res.consumedMove).toBe(true);
-    // 3 rows + 3 cols on a 9x9 ≈ 3*9 + 3*9 - overlap ≈ 45ish; assert clearly big
+    // 3 rows + 3 cols on a 9x9 ≈ 45ish; assert clearly big
     expect(clearedCount(res.steps)).toBeGreaterThanOrEqual(30);
-  });
-
-  it("a fish combo emits a fish-fly step", () => {
-    const b = makeBoard(2);
-    b.grid[4][4] = special(9001, "fish", 0);
-    b.grid[4][5] = special(9002, "wrapped", 1);
-    const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
-    expect(res.consumedMove).toBe(true);
-    expect(res.steps.some((s) => s.kind === "fish-fly")).toBe(true);
-  });
-});
-
-describe("coloring candy", () => {
-  it("recolours the swap partner's colour into its own (emits recolor, no mass clear)", () => {
-    const b = makeBoard(2);
-    // coloring candy colour 0, swapped with a colour-2 candy → all colour-2 → 0
-    b.grid[4][4] = special(9001, "coloring", 0);
-    b.grid[4][5] = { id: 9002, colour: 2, special: null };
-    // ensure some colour-2 candies exist to recolour
-    b.grid[0][0] = { id: 8000, colour: 2, special: null };
-    b.grid[0][1] = { id: 8001, colour: 2, special: null };
-    const res = b.trySwap({ row: 4, col: 4 }, { row: 4, col: 5 });
-    expect(res.consumedMove).toBe(true);
-    expect(res.steps.some((s) => s.kind === "recolor")).toBe(true);
   });
 });
 

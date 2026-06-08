@@ -1,19 +1,17 @@
 // The thin Kaplay view (ADR-0001). Owns no game rules — it renders the Game's
 // board, animates the Steps the core emits, and turns gestures into swap
 // requests. Input is locked while a Resolution animates.
+//
+// Simple game (ADR-0007): boots straight into one collect-one-fruit level on a
+// varied board. No menu — a Music toggle and a "?" tutorial button sit on the
+// play HUD; Win/Loss shows a result overlay with Replay (fresh shape + seed).
 
 import type { KAPLAYCtx } from "kaplay";
-import {
-  DEFAULT_CHALLENGE,
-  SHAPE_TEMPLATES,
-  type ChallengeConfig,
-} from "../core/config.ts";
+import { DEFAULT_CHALLENGE } from "../core/config.ts";
 import { Game } from "../core/game.ts";
 import type { Candy, Colour, Pos, SpecialType, Step } from "../core/types.ts";
 import { cellCenter, computeLayout, type Layout } from "./layout.ts";
-import { MenuScreen } from "./menu.ts";
 import { MusicPlayer } from "./music.ts";
-import { ReferenceModal } from "./reference.ts";
 import { TutorialScreen } from "./tutorial.ts";
 import { drawCandy, drawCellBg } from "./render.ts";
 import { Effects } from "./effects.ts";
@@ -21,16 +19,10 @@ import { emojiText } from "./text.ts";
 import {
   BG_BOTTOM,
   BG_TOP,
-  BURGER_DONE,
-  BURGER_PARTS,
   BURST_COLOURS,
   COLOUR_THEMES,
   GRID_PANEL,
   GRID_PANEL_BORDER,
-  JAM_FILL,
-  JAM_OUTLINE,
-  JELLY_FILL,
-  JELLY_OUTLINE,
   PANEL_BORDER,
   PANEL_FILL,
   TEXT_ACCENT,
@@ -43,18 +35,6 @@ interface Sprite {
   id: number;
   colour: Colour | null;
   special: Candy["special"];
-  ingredient: boolean;
-  ingredientKind: number;
-  blocker: boolean;
-  blockerHits: number;
-  frozen: boolean;
-  box: boolean;
-  boxHits: number;
-  gum: boolean;
-  gumHits: number;
-  cased: boolean;
-  caseHits: number;
-  chocolate: boolean;
   x: number;
   y: number;
   scale: number;
@@ -63,7 +43,6 @@ interface Sprite {
 const SWAP_MS = 130;
 const CLEAR_MS = 260;
 const FALL_MS = 280;
-const DROP_OUT_MS = 420; // ingredient slides off the bottom of the board
 // Beats inserted between cascade phases so each clear is legible.
 const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
@@ -71,76 +50,36 @@ const END_OVERLAY_DELAY = 0.9; // seconds to watch the final board before the mo
 const WIN_CELEBRATE_SECS = 2.6; // how long confetti keeps showering on a win
 const WIN_WAVE_GAP = 0.4; // gap between confetti rain waves
 const HINT_DELAY = 3.0; // seconds idle before the move hint appears
-const FISH_FLY_MS = 520; // fish travel time to its target (slow enough to follow)
-const SUGAR_CONVERT_MS = 70; // quick pop per candy converted in the Sugar Crush
 
 export class GameView {
-  private mode: "menu" | "tutorial" | "play" = "menu";
-  private menu: MenuScreen;
+  private mode: "play" | "tutorial" = "play";
   private tutorial: TutorialScreen;
-  private reference: ReferenceModal;
-  // The challenge chosen on the menu, shown on the tutorial screen, started on Play.
-  private pending: ChallengeConfig | null = null;
-  // Shape selector (menu chip): the forced ShapeTemplate id for the next
-  // "varied" Challenge, or null = Random (seed picks). Index -1 = Random,
-  // 0..N-1 = SHAPE_TEMPLATES[i].
-  private shapeIndex = -1;
-  private game!: Game; // defined once a Challenge is picked
-  private layout!: Layout; // defined once a Challenge is picked
+  private game!: Game; // defined once a game starts
+  private layout!: Layout; // defined once a game starts
   private sprites = new Map<number, Sprite>(); // candy id → sprite
   // The view's own mirror of which candy id occupies each cell. Driven purely
   // by step payloads during a Resolution, never by reading board.grid (which is
   // already the final state mid-animation — reading it caused tiles to vanish
   // and reappear).
   private viewGrid: (number | null)[][] = [];
-  // The view's own mirror of the jelly layer, driven by jelly-clear steps (the
-  // board's own jelly is already at its final state mid-resolution — same rule
-  // as viewGrid vs board.grid).
-  private viewJelly: number[][] = [];
-  // The view's mirror of the jam coating (Spread-the-Jam), driven by jam-spread
-  // steps and resynced to the board at rest points.
-  private viewJam: boolean[][] = [];
-  // Burger parts collected so far, mirrored for the HUD (driven by collect
-  // steps; resynced to the board at rest points).
-  private viewBurger = new Set<number>();
-  // Total burger parts collected so far (Avalanche needs a running count, not a
-  // distinct-kind set, since many parts of the same kind rain in).
-  private viewCollected = 0;
-  // Cased items freed so far, mirrored for the HUD (Free-It).
-  private viewFreed = 0;
-  // Chocolate tiles on the board, mirrored for the HUD (Clear-the-Chocolate).
-  private viewChoco = 0;
-  // Blocker tiles on the board, mirrored for the HUD (Clear-the-Blockers).
-  private viewBlockers = 0;
-  // During a Sugar Crush, the leftover-move count shown ticking down in the HUD
-  // (-1 = not in a finale; the real game.movesLeft is already 0).
-  private finaleMoves = -1;
-  // In-game Back button hit rect (set each HUD draw) + an abort flag so an
-  // in-flight Resolution stops touching the board after we leave to the menu.
-  private backRect = { x: 0, y: 0, w: 0, h: 0 };
+  // The "?" tutorial button + Music toggle hit rects (set each HUD draw).
+  private helpRect = { x: 0, y: 0, w: 0, h: 0 };
+  private musicRect = { x: 0, y: 0, w: 0, h: 0 };
   private aborted = false;
   private busy = false; // input lock during Resolution
   private selected: Pos | null = null;
   private dragStart: { pos: Pos; px: number; py: number } | null = null;
-  // Menu scroll-drag: a press that turns into a scroll once the finger moves.
-  private menuDrag: { startY: number; lastY: number; moved: boolean } | null = null;
   private particles: Particles;
   private effects: Effects;
   private music = new MusicPlayer();
-  // Sugar Crush finale: disabled by default (the animation still needs polish).
-  // The engine + view support it (Game.sugarCrushEnabled / board.sugarCrush);
-  // flip this to true to re-enable. No menu toggle for now.
-  private sugarCrushOn = false;
   // Idle hint: seconds since the last input while a move is possible. After
   // HINT_DELAY a legal swap is shown pulsing until the player acts.
   private idle = 0;
   private hint: [Pos, Pos] | null = null;
   // Cascade depth within the current Resolution, for escalating praise words.
   private cascadeDepth = 0;
-  // The fish sprite currently in flight, drawn last (on top of the board).
-  private flyingFishId: number | null = null;
-  // Screen position of each goal chip (collect-colours), filled by the HUD each
-  // frame so a cleared fruit can fly to its chip. Keyed by Colour.
+  // Screen position of each goal chip, filled by the HUD each frame so a cleared
+  // fruit can fly to its chip. Keyed by Colour.
   private goalChipPos = new Map<Colour, { x: number; y: number }>();
   // Per-colour HUD chip "bump" scale, decays each frame; bumped on arrival.
   private chipBump = new Map<Colour, number>();
@@ -154,11 +93,11 @@ export class GameView {
   private celebrateLeft = 0;
   private nextWaveIn = 0;
   private overlayPop = 0;
+  // Replay button hit rect on the end overlay.
+  private replayRect = { x: 0, y: 0, w: 0, h: 0 };
 
   constructor(private k: KAPLAYCtx) {
-    this.menu = new MenuScreen(k);
     this.tutorial = new TutorialScreen(k);
-    this.reference = new ReferenceModal(k);
     this.particles = new Particles(k);
     this.effects = new Effects(k);
     this.bind();
@@ -173,6 +112,8 @@ export class GameView {
         else this.chipBump.set(c, nv);
       }
     });
+    // Boot straight into a game (ADR-0007 — no menu).
+    this.startGame();
   }
 
   private newSeed() {
@@ -186,12 +127,10 @@ export class GameView {
   }
 
   /**
-   * For each cleared cell whose candy is a collect-colours target, fly a fruit
-   * emoji from that cell to its goal chip, bumping the chip on arrival. No-op
-   * for other objective kinds (no goal chips).
+   * For each cleared cell whose candy is a target colour, fly a fruit emoji from
+   * that cell to its goal chip, bumping the chip on arrival.
    */
   private flyCollectedToGoal(ids: number[]) {
-    if (this.game.cfg.objective.kind !== "collect-colours") return;
     const targets = new Set(this.game.objective.targets);
     let launched = 0;
     for (let i = 0; i < ids.length && launched < 6; i++) {
@@ -216,7 +155,7 @@ export class GameView {
   /**
    * Draw the right special-clear effect from a special-activate's geometry: a
    * horizontal beam if the cleared cells line up on the origin's row, a vertical
-   * beam if on its column, otherwise a radial flash (color bomb).
+   * beam if on its column, otherwise a radial flash (color bomb / wrapped).
    */
   private specialFx(special: SpecialType, origin: Pos, cleared: Pos[]) {
     if (cleared.length === 0) {
@@ -260,18 +199,6 @@ export class GameView {
         this.effects.flash(ox, oy, cell * 3.2, [120, 200, 255]);
         playSound("bomb");
         break;
-      case "fish":
-        // the fly step already animated; pop a small splash at each cleared cell
-        for (const p of cleared) {
-          const { x, y } = cellCenter(this.layout, p.row, p.col);
-          this.particles.burst(x, y, [90, 200, 255], 5);
-        }
-        playSound("fish");
-        break;
-      case "coloring":
-        this.effects.flash(ox, oy, cell * 1.6, [200, 120, 255]);
-        playSound("special");
-        break;
     }
   }
 
@@ -314,7 +241,7 @@ export class GameView {
     return this.k.rgb(255, 255, 255);
   }
 
-  // Board dims of the active Challenge (ADR-0002 — no global constants).
+  // Board dims of the active board (the session's shape may differ from nominal).
   private get rows() {
     return this.game.board.rows;
   }
@@ -327,42 +254,20 @@ export class GameView {
     return this.game.board.playableCellCount() < this.rows * this.cols;
   }
 
-  /** The forced ShapeTemplate id from the selector, or undefined = Random. */
-  private get forcedShapeId(): string | undefined {
-    return this.shapeIndex >= 0 ? SHAPE_TEMPLATES[this.shapeIndex].id : undefined;
-  }
-
-  /** Selector chip label: "Random" or the chosen template id. */
-  get shapeLabel(): string {
-    return this.shapeIndex >= 0 ? SHAPE_TEMPLATES[this.shapeIndex].id : "Random";
-  }
-
-  /** Cycle the shape selector: Random → each template → Random. */
-  cycleShape() {
-    this.shapeIndex =
-      this.shapeIndex + 1 >= SHAPE_TEMPLATES.length ? -1 : this.shapeIndex + 1;
-  }
-
   /**
-   * Dev/test hook: jump straight into Berry Sort forced to the given shape id,
-   * skipping the menu + tutorial. Exposed on window in DEV builds for the e2e
-   * screenshot suite. A null id = Random (seeded pick). Pass a fixed `seed` to
-   * make the board layout reproducible (the e2e snapshots rely on this).
+   * Dev/test hook: start a game forced to the given shape id, with an optional
+   * fixed seed for reproducible boards. Exposed on window in DEV builds for the
+   * e2e screenshot suite. A null id = Random (seeded pick).
    */
   startShape(id: string | null, seed?: number) {
-    const i = id ? SHAPE_TEMPLATES.findIndex((t) => t.id === id) : -1;
-    this.shapeIndex = id ? (i >= 0 ? i : -1) : -1;
-    this.startChallenge(DEFAULT_CHALLENGE, seed);
+    this.startGame(seed, id ?? undefined);
   }
 
-  /** Begin a Challenge from the menu: fresh seeded board, switch to play mode.
-   *  Honours the shape selector for "varied" Challenges. A fixed `seed` (dev/
-   *  test) makes the board reproducible; omitted = fresh entropy seed. */
-  startChallenge(cfg: ChallengeConfig, seed = this.newSeed()) {
-    this.game = new Game(seed, cfg, this.forcedShapeId);
-    this.game.sugarCrushEnabled = this.sugarCrushOn;
-    // Layout from the REAL board dims (a varied/forced shape may differ from the
-    // config's nominal rows×cols).
+  /** Begin a fresh game: new seeded board, varied shape, switch to play mode.
+   *  A fixed `seed` / `forcedShapeId` (dev/test) makes the board reproducible. */
+  startGame(seed = this.newSeed(), forcedShapeId?: string) {
+    this.game = new Game(seed, DEFAULT_CHALLENGE, forcedShapeId);
+    // Layout from the REAL board dims (a varied shape may differ from nominal).
     this.layout = computeLayout(
       this.k.width(),
       this.k.height(),
@@ -378,25 +283,9 @@ export class GameView {
     this.celebrateLeft = 0;
     this.nextWaveIn = 0;
     this.overlayPop = 0;
-    this.flyingFishId = null;
-    this.finaleMoves = -1;
     this.sprites.clear();
     this.rebuildFromBoard();
     this.mode = "play";
-  }
-
-  private returnToMenu() {
-    // Abandon any in-flight Resolution: the running playSteps loop checks
-    // `aborted` and bails without touching the (now stale) board.
-    this.aborted = true;
-    this.busy = false;
-    this.mode = "menu";
-    this.selected = null;
-    this.dragStart = null;
-    this.menuDrag = null;
-    this.reference.close();
-    this.finaleMoves = -1;
-    this.sprites.clear();
   }
 
   private inBounds(p: Pos): boolean {
@@ -407,7 +296,7 @@ export class GameView {
 
   /**
    * Snapshot the board into sprites + viewGrid, all at rest. Only used when the
-   * board jumps to a known-good state with no animation: level start, restart,
+   * board jumps to a known-good state with no animation: game start, replay,
    * reshuffle, and resize. Never called mid-Resolution.
    */
   private rebuildFromBoard() {
@@ -415,13 +304,6 @@ export class GameView {
     this.viewGrid = Array.from({ length: this.rows }, () =>
       Array<number | null>(this.cols).fill(null),
     );
-    this.viewJelly = this.game.board.jelly.map((row) => row.slice());
-    this.viewJam = this.game.board.jam.map((row) => row.slice());
-    this.viewBurger = new Set(this.game.board.collectedIngredientKinds);
-    this.viewCollected = this.game.board.ingredientsCollected;
-    this.viewFreed = this.game.board.itemsFreed;
-    this.viewChoco = this.game.board.chocolateRemaining();
-    this.viewBlockers = this.game.board.blockersRemaining();
     for (let r = 0; r < this.rows; r++) {
       for (let c = 0; c < this.cols; c++) {
         const candy = this.game.board.grid[r][c];
@@ -431,18 +313,6 @@ export class GameView {
           id: candy.id,
           colour: candy.colour,
           special: candy.special,
-          ingredient: !!candy.ingredient,
-          ingredientKind: candy.ingredientKind ?? 0,
-          blocker: !!candy.blocker,
-          blockerHits: candy.blockerHits ?? 0,
-          frozen: !!candy.frozen,
-          box: !!candy.box,
-          boxHits: candy.boxHits ?? 0,
-          gum: !!candy.gum,
-          gumHits: candy.gumHits ?? 0,
-          cased: !!candy.cased,
-          caseHits: candy.caseHits ?? 0,
-          chocolate: !!candy.chocolate,
           x,
           y,
           scale: 1,
@@ -502,24 +372,20 @@ export class GameView {
   private async playSteps(steps: Step[]) {
     this.cascadeDepth = 0;
     for (const step of steps) {
-      if (this.aborted) return; // left to the menu mid-Resolution
+      if (this.aborted) return; // game replaced mid-Resolution
       await this.playStep(step);
-      // The Sugar Crush finale is long (many stripes + sweeps), so pace it much
-      // faster and skip the per-round praise spam.
-      const fast = this.finaleMoves >= 0;
       // Pace the cascade: pause after a clear so the gap is visible, and after
       // a spawn (end of one cascade round) before the next round begins.
       if (step.kind === "clear" || step.kind === "special-activate")
-        await this.wait(fast ? AFTER_CLEAR_MS * 0.5 : AFTER_CLEAR_MS);
+        await this.wait(AFTER_CLEAR_MS);
       else if (step.kind === "spawn") {
         this.cascadeDepth++;
-        if (!fast && this.cascadeDepth >= 2) this.praiseCascade(this.cascadeDepth);
-        await this.wait(fast ? AFTER_ROUND_MS * 0.5 : AFTER_ROUND_MS);
+        if (this.cascadeDepth >= 2) this.praiseCascade(this.cascadeDepth);
+        await this.wait(AFTER_ROUND_MS);
       }
     }
     // Final correction: align sprites to the view's own grid. By now viewGrid
-    // matches board.grid, so this only fixes sub-pixel tween drift — it never
-    // teleports a tile the way reading board.grid mid-cascade used to.
+    // matches board.grid, so this only fixes sub-pixel tween drift.
     this.snapToViewGrid();
   }
 
@@ -565,7 +431,7 @@ export class GameView {
         } else {
           playSound("clear");
         }
-        // fruit collected toward a collect-colours goal flies to its HUD chip
+        // fruit collected toward the goal flies to its HUD chip
         this.flyCollectedToGoal(step.ids);
         await this.popIds(cells, step.ids);
         break;
@@ -579,23 +445,6 @@ export class GameView {
           s.colour = step.colour;
           this.setAt(step.at, step.id);
           await this.pulse(step.id);
-        }
-        break;
-      }
-      case "sugar-convert": {
-        // a leftover move spent: a candy becomes striped, HUD moves tick down
-        playSound("striped");
-        this.finaleMoves = step.movesLeft;
-        const s = this.sprites.get(step.id);
-        if (s) {
-          s.special = step.special;
-          s.colour = step.colour;
-          this.setAt(step.at, step.id);
-          // quick pop — the whole conversion sweep should feel snappy
-          await this.tween((t) => {
-            s.scale = 1 + Math.sin(t * Math.PI) * 0.3;
-          }, SUGAR_CONVERT_MS);
-          s.scale = 1;
         }
         break;
       }
@@ -622,18 +471,6 @@ export class GameView {
             id: sp.id,
             colour: sp.colour,
             special: null,
-            ingredient: false,
-            ingredientKind: 0,
-            blocker: false,
-            blockerHits: 0,
-            frozen: false,
-            box: false,
-            boxHits: 0,
-            gum: false,
-            gumHits: 0,
-            cased: false,
-            caseHits: 0,
-            chocolate: false,
             x,
             y: startY,
             scale: 1,
@@ -643,255 +480,11 @@ export class GameView {
         await Promise.all(
           step.spawns.map((sp) => this.moveSprite(sp.id, sp.at, FALL_MS)),
         );
-        break;
-      }
-      case "ingredient-spawn": {
-        // Avalanche: burger parts rain in from the top, same drop as candies
-        for (const sp of step.spawns) {
-          const { x } = cellCenter(this.layout, sp.at.row, sp.at.col);
-          const startY =
-            this.layout.originY - this.layout.cell * (this.rows - sp.at.row);
-          this.sprites.set(sp.id, {
-            id: sp.id,
-            colour: null,
-            special: null,
-            ingredient: true,
-            ingredientKind: sp.kind,
-            blocker: false,
-            blockerHits: 0,
-            frozen: false,
-            box: false,
-            boxHits: 0,
-            gum: false,
-            gumHits: 0,
-            cased: false,
-            caseHits: 0,
-            chocolate: false,
-            x,
-            y: startY,
-            scale: 1,
-          });
-          this.setAt(sp.at, sp.id);
-        }
-        await Promise.all(
-          step.spawns.map((sp) => this.moveSprite(sp.id, sp.at, FALL_MS)),
-        );
-        break;
-      }
-      case "jelly-clear": {
-        // sync the view's jelly mirror to the levels the core reported
-        step.cells.forEach((p, i) => {
-          this.viewJelly[p.row][p.col] = step.levels[i];
-        });
-        break;
-      }
-      case "jelly-spread": {
-        // Frosting Drip crept onto new cells — flash them in and hold a beat
-        playSound("invalid");
-        step.cells.forEach((p, i) => {
-          this.viewJelly[p.row][p.col] = step.levels[i];
-        });
-        await this.wait(AFTER_CLEAR_MS);
-        break;
-      }
-      case "ingredient-collect": {
-        // a burger part reached the bottom — slide it off the board edge
-        playSound("special");
-        for (const kind of step.kinds) this.viewBurger.add(kind);
-        this.viewCollected += step.kinds.length;
-        await this.dropOutIds(step.cells, step.ids);
-        break;
-      }
-      case "blocker-clear": {
-        // an adjacent match broke these blockers — pop them out
-        playSound("clear");
-        this.viewBlockers = Math.max(0, this.viewBlockers - step.cells.length);
-        await this.popIds(step.cells, step.ids);
-        break;
-      }
-      case "blocker-hit": {
-        // a layered blocker chipped — drop a pip and shake
-        playSound("clear");
-        step.ids.forEach((id, i) => {
-          const s = this.sprites.get(id);
-          if (s) s.blockerHits = step.hits[i];
-        });
-        await Promise.all(step.ids.map((id) => this.pulse(id)));
-        break;
-      }
-      case "gum-hit": {
-        // bubble gum chipped — drop a pip and a small squish
-        playSound("wrapped");
-        step.ids.forEach((id, i) => {
-          const s = this.sprites.get(id);
-          if (s) s.gumHits = step.hits[i];
-        });
-        await Promise.all(step.ids.map((id) => this.pulse(id)));
-        break;
-      }
-      case "gum-pop": {
-        // bubble gum popped — splash + a burst flash where it was
-        playSound("wrapped");
-        for (const p of step.cells) {
-          const { x, y } = cellCenter(this.layout, p.row, p.col);
-          this.effects.flash(x, y, this.layout.cell * 2.2, [255, 120, 190]);
-          this.particles.burst(x, y, [255, 140, 200], 10);
-        }
-        await this.popIds(step.cells, step.ids);
-        break;
-      }
-      case "case-hit": {
-        // casing chipped — drop a pip and rattle the cage
-        playSound("clear");
-        step.ids.forEach((id, i) => {
-          const s = this.sprites.get(id);
-          if (s) s.caseHits = step.hits[i];
-        });
-        await Promise.all(step.ids.map((id) => this.pulse(id)));
-        break;
-      }
-      case "choco-clear": {
-        // adjacent match broke chocolate — pop the tiles out
-        playSound("clear");
-        this.viewChoco = Math.max(0, this.viewChoco - step.cells.length);
-        await this.popIds(step.cells, step.ids);
-        break;
-      }
-      case "choco-spread": {
-        // chocolate crept onto a candy cell — turn it into a chocolate sprite
-        playSound("invalid");
-        this.viewChoco += step.cells.length;
-        step.cells.forEach((p, i) => {
-          const id = this.idAt(p);
-          if (id != null) this.sprites.delete(id); // remove the eaten candy
-          const { x, y } = cellCenter(this.layout, p.row, p.col);
-          this.sprites.set(step.ids[i], {
-            id: step.ids[i],
-            colour: null,
-            special: null,
-            ingredient: false,
-            ingredientKind: 0,
-            blocker: false,
-            blockerHits: 0,
-            frozen: false,
-            box: false,
-            boxHits: 0,
-            gum: false,
-            gumHits: 0,
-            cased: false,
-            caseHits: 0,
-            chocolate: true,
-            x,
-            y,
-            scale: 0.5,
-          });
-          this.setAt(p, step.ids[i]);
-        });
-        await Promise.all(step.ids.map((id) => this.pulse(id)));
-        break;
-      }
-      case "jam-spread": {
-        // a match (or special blast) that touched jam coats those cells in jam
-        for (const p of step.cells) {
-          this.viewJam[p.row][p.col] = true;
-          const { x, y } = cellCenter(this.layout, p.row, p.col);
-          this.particles.burst(x, y, JAM_FILL, 4);
-        }
-        break;
-      }
-      case "item-free": {
-        // casing broken — the trapped item pops free; celebrate
-        playSound("special");
-        this.viewFreed += step.cells.length;
-        for (const p of step.cells) {
-          const { x, y } = cellCenter(this.layout, p.row, p.col);
-          this.effects.flash(x, y, this.layout.cell * 2, [120, 220, 140]);
-          this.particles.burst(x, y, [120, 230, 150], 12);
-        }
-        await this.popIds(step.cells, step.ids);
-        break;
-      }
-      case "thaw": {
-        // an adjacent match melted the frost — drop the overlay and pulse
-        playSound("special");
-        for (const id of step.ids) {
-          const s = this.sprites.get(id);
-          if (s) s.frozen = false;
-        }
-        await Promise.all(step.ids.map((id) => this.pulse(id)));
-        break;
-      }
-      case "box-hit": {
-        // a knock — drop a pip and give the crate a little shake-pulse
-        playSound("clear");
-        step.ids.forEach((id, i) => {
-          const s = this.sprites.get(id);
-          if (s) s.boxHits = step.hits[i];
-        });
-        await Promise.all(step.ids.map((id) => this.pulse(id)));
-        break;
-      }
-      case "box-open": {
-        // crate cracks: it becomes a burger-part Ingredient (an ingredient-
-        // collect step will then drop it off the bottom)
-        playSound("special");
-        step.ids.forEach((id, i) => {
-          const s = this.sprites.get(id);
-          if (s) {
-            s.box = false;
-            s.boxHits = 0;
-            s.ingredient = true;
-            s.ingredientKind = step.kinds[i];
-          }
-        });
-        await Promise.all(step.ids.map((id) => this.pulse(id)));
         break;
       }
       case "reshuffle": {
         // a reshuffle replaces the whole layout; snap to the new board
         this.rebuildFromBoard();
-        break;
-      }
-      case "fish-fly": {
-        // a fish lifts off, then arcs across to its target so the path reads
-        playSound("fish");
-        const s = this.sprites.get(step.id);
-        if (s) {
-          this.flyingFishId = step.id; // draw it on top while in flight
-          const { x, y } = cellCenter(this.layout, step.to.row, step.to.col);
-          const sx = s.x;
-          const sy = s.y;
-          // a brief lift/wiggle so the eye catches it before it travels
-          await this.tween((t) => {
-            s.scale = 1 + 0.35 * t;
-          }, 150);
-          // the arc across to the target (slow enough to follow)
-          await this.tween((t) => {
-            const e = ease(t);
-            s.x = sx + (x - sx) * e;
-            s.y = sy + (y - sy) * e - Math.sin(t * Math.PI) * this.layout.cell * 1.0;
-            s.scale = 1.35 - 0.35 * t;
-          }, FISH_FLY_MS);
-          s.scale = 1;
-          this.flyingFishId = null;
-          // a splash where it lands
-          this.particles.burst(x, y, [90, 200, 255], 8);
-        }
-        break;
-      }
-      case "recolor": {
-        // coloring candy swept these cells into a new colour (no clear) — pop a
-        // little colour-burst on each and a brief scale-pulse as it changes
-        playSound("special");
-        const burst = BURST_COLOURS[step.colour] ?? [255, 255, 255];
-        step.ids.forEach((id) => {
-          const s = this.sprites.get(id);
-          if (s) {
-            s.colour = step.colour;
-            this.particles.burst(s.x, s.y, burst, 5);
-          }
-        });
-        await this.wait(AFTER_CLEAR_MS);
         break;
       }
     }
@@ -920,38 +513,6 @@ export class GameView {
     for (const id of ids) {
       const s = this.sprites.get(id);
       if (s) this.particles.burst(s.x, s.y, BURST_COLOURS[s.colour ?? 0]);
-      this.sprites.delete(id);
-    }
-  }
-
-  /**
-   * Slide the given pieces straight down and off the bottom edge of the board,
-   * then remove them — the burger-part "drop off" animation (distinct from the
-   * pop a normal clear uses).
-   */
-  private async dropOutIds(cells: Pos[], ids: number[]) {
-    cells.forEach((p) => this.setAt(p, null));
-    const exitY = this.layout.originY + this.layout.boardH + this.layout.cell;
-    const startY = new Map<number, number>();
-    for (const id of ids) {
-      const s = this.sprites.get(id);
-      if (s) startY.set(id, s.y);
-    }
-    await this.tween((t) => {
-      // ease-in fall (accelerating) feels like dropping out
-      const f = t * t;
-      for (const id of ids) {
-        const s = this.sprites.get(id);
-        const sy = startY.get(id);
-        if (s && sy != null) {
-          s.y = sy + (exitY - sy) * f;
-          s.scale = 1 - 0.25 * t;
-        }
-      }
-    }, DROP_OUT_MS);
-    for (const id of ids) {
-      const s = this.sprites.get(id);
-      if (s) this.particles.burst(s.x, s.y, [255, 180, 120]);
       this.sprites.delete(id);
     }
   }
@@ -995,83 +556,47 @@ export class GameView {
     return { row, col };
   }
 
+  private hits(r: { x: number; y: number; w: number; h: number }, px: number, py: number) {
+    return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+  }
+
   private bind() {
     const k = this.k;
-
-    // Wheel/trackpad scrolls the menu grid or the reference modal.
-    k.onScroll((delta) => {
-      if (this.mode !== "menu") return;
-      if (this.reference.isOpen()) this.reference.scrollBy(delta.y);
-      else this.menu.scrollBy(delta.y);
-    });
 
     k.onMousePress(() => {
       // First gesture unlocks audio (autoplay policy); starts saved track.
       this.music.unlock();
-      if (this.mode === "menu") {
-        const p = k.mousePos();
-        if (this.reference.isOpen()) {
-          if (this.reference.hitClose(p.x, p.y)) {
-            playSound("swap");
-            this.reference.close();
-            this.menuDrag = null;
-            return;
-          }
-          this.menuDrag = { startY: p.y, lastY: p.y, moved: false };
-          return;
-        }
-        if (this.menu.hitHelp(p.x, p.y)) {
-          playSound("swap");
-          this.reference.open();
-          this.menuDrag = null;
-          return;
-        }
-        // music chip first — it sits above the grid
-        if (this.menu.hitMusic(p.x, p.y)) {
-          playSound("swap");
-          this.music.cycle();
-          this.menuDrag = null;
-          return;
-        }
-        // shape selector chip — cycle the forced Board Shape for the next play
-        if (this.menu.hitShape(p.x, p.y)) {
-          playSound("swap");
-          this.cycleShape();
-          this.menuDrag = null;
-          return;
-        }
-        // begin a press: it becomes a scroll-drag if the finger moves, else a
-        // tap-to-select on release.
-        this.menuDrag = { startY: p.y, lastY: p.y, moved: false };
-        return;
-      }
-      if (this.mode === "tutorial") {
-        const p = k.mousePos();
-        const what = this.tutorial.hit(p.x, p.y);
-        if (what === "play" && this.pending) {
-          playSound("swap");
-          this.startChallenge(this.pending);
-        } else if (what === "back") {
-          this.returnToMenu();
-        }
-        return;
-      }
-      // In-game Back button works any time (even mid-Resolution): abandon the
-      // game and return to the level list.
-      {
-        const p = k.mousePos();
-        const r = this.backRect;
-        if (p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h) {
-          playSound("swap");
-          this.returnToMenu();
-          return;
-        }
-      }
-      if (this.busy || this.game.outcome() !== "playing") {
-        this.handleOverlayClick();
-        return;
-      }
       const p = k.mousePos();
+
+      if (this.mode === "tutorial") {
+        // any tap closes the how-to-play overlay and returns to the game
+        playSound("swap");
+        this.mode = "play";
+        return;
+      }
+
+      // Music toggle + "?" tutorial buttons work any time.
+      if (this.hits(this.musicRect, p.x, p.y)) {
+        playSound("swap");
+        this.music.cycle();
+        return;
+      }
+      if (this.hits(this.helpRect, p.x, p.y)) {
+        playSound("swap");
+        this.mode = "tutorial";
+        return;
+      }
+
+      // End-of-game overlay: tap Replay to start a fresh game.
+      if (this.game.outcome() !== "playing") {
+        if (!this.busy && this.endHold <= 0 && this.hits(this.replayRect, p.x, p.y)) {
+          playSound("swap");
+          this.startGame();
+        }
+        return;
+      }
+      if (this.busy) return;
+
       const cell = this.cellAt(p.x, p.y);
       if (!cell) return;
       this.idle = 0; // any board interaction defers the hint
@@ -1092,36 +617,8 @@ export class GameView {
       }
     });
 
-    // Drag the menu grid to scroll it (touch + mouse).
-    k.onMouseMove(() => {
-      if (this.mode !== "menu" || !this.menuDrag) return;
-      const p = k.mousePos();
-      const dy = p.y - this.menuDrag.lastY;
-      this.menuDrag.lastY = p.y;
-      if (Math.abs(p.y - this.menuDrag.startY) > 6) this.menuDrag.moved = true;
-      if (this.menuDrag.moved) {
-        if (this.reference.isOpen()) this.reference.scrollBy(-dy);
-        else this.menu.scrollBy(-dy);
-      }
-    });
-
     k.onMouseRelease(() => {
-      // Menu: a press that didn't turn into a scroll is a tap-to-select.
-      if (this.mode === "menu") {
-        const drag = this.menuDrag;
-        this.menuDrag = null;
-        if (this.reference.isOpen()) return;
-        if (drag && !drag.moved) {
-          const p = k.mousePos();
-          const cfg = this.menu.hitTest(p.x, p.y);
-          if (cfg) {
-            playSound("swap");
-            this.pending = cfg;
-            this.mode = "tutorial";
-          }
-        }
-        return;
-      }
+      if (this.mode !== "play") return;
       if (this.busy || !this.dragStart) {
         this.dragStart = null;
         return;
@@ -1144,31 +641,13 @@ export class GameView {
     });
   }
 
-  private handleOverlayClick() {
-    if (this.game.outcome() === "playing") return;
-    // ignore taps during the linger — the overlay isn't up yet
-    if (this.busy || this.endHold > 0) return;
-    // any click on the end overlay returns to the level-select menu
-    this.returnToMenu();
-  }
-
   private async requestSwap(a: Pos, b: Pos) {
     this.busy = true;
     this.idle = 0;
     this.hint = null;
-    const { steps, sugarCrush } = this.game.playMove(a, b);
-    if (sugarCrush) {
-      // banner over the board as the finale kicks off
-      const x = this.layout.originX + this.layout.boardW / 2;
-      const y = this.layout.originY + this.layout.boardH * 0.4;
-      this.effects.word("SUGAR CRUSH!", x, y, [240, 80, 150], 52);
-      playSound("win");
-      // HUD shows the leftover-move count ticking down as candies convert
-      this.finaleMoves = steps.filter((s) => s.kind === "sugar-convert").length;
-    }
+    const { steps } = this.game.playMove(a, b);
     await this.playSteps(steps);
-    if (this.aborted) return; // left to the menu; the old game is discarded
-    this.finaleMoves = -1;
+    if (this.aborted) return; // game replaced; the old one is discarded
     // reshuffle if the resulting board is deadlocked
     if (this.game.outcome() === "playing") {
       const rs = this.game.reshuffleIfStuck();
@@ -1179,11 +658,9 @@ export class GameView {
 
   // ---- frame --------------------------------------------------------------
 
-  /** Per-frame update: advance the level clock for timed challenges, and run
-   *  the end-of-level lingering countdown before the overlay appears. */
+  /** Per-frame update: idle-hint timer and the end-of-game lingering countdown. */
   tick(dtSeconds: number) {
     if (this.mode !== "play") return;
-    this.game.tick(dtSeconds);
 
     // Idle hint: while the board is at rest and playable, count up; after the
     // delay, surface a legal swap to nudge the player. Any action resets it.
@@ -1197,8 +674,7 @@ export class GameView {
       this.hint = null;
     }
     // Once the outcome is decided and the last Resolution has finished
-    // animating, hold on the final board for a beat before the modal. Start the
-    // countdown only when not busy so the closing clears/falls play out first.
+    // animating, hold on the final board for a beat before the modal.
     if (this.game.outcome() !== "playing" && !this.busy) {
       if (this.prevOutcome === "playing") {
         // first frame the result is visible at rest — begin the linger
@@ -1206,13 +682,8 @@ export class GameView {
         const won = this.game.outcome() === "won";
         if (won) {
           playSound("win");
-          // immediate burst from the board centre, then a sustained shower
           this.particles.confettiRain(this.k.width(), 80);
-          this.particles.confettiPop(
-            this.k.width() / 2,
-            this.k.height() * 0.55,
-            48,
-          );
+          this.particles.confettiPop(this.k.width() / 2, this.k.height() * 0.55, 48);
           this.celebrateLeft = WIN_CELEBRATE_SECS;
           this.nextWaveIn = WIN_WAVE_GAP;
         } else {
@@ -1242,7 +713,7 @@ export class GameView {
   }
 
   onResize() {
-    if (this.mode !== "play") return; // menu/tutorial recompute geometry each draw
+    if (this.mode !== "play") return; // tutorial recomputes geometry each draw
     this.layout = computeLayout(
       this.k.width(),
       this.k.height(),
@@ -1255,14 +726,8 @@ export class GameView {
   }
 
   draw() {
-    if (this.mode === "menu") {
-      this.menu.draw(this.music.label, this.shapeLabel);
-      this.reference.draw();
-      this.particles.draw();
-      return;
-    }
     if (this.mode === "tutorial") {
-      if (this.pending) this.tutorial.draw(this.pending);
+      this.tutorial.draw(this.game.cfg);
       return;
     }
     const k = this.k;
@@ -1280,8 +745,7 @@ export class GameView {
     // soft rounded board panel behind the grid. For a rectangular board this is
     // one rounded rect over the whole bbox; for a shaped board (with Voids) a
     // single bbox rect would cover the void corners, so we back each playable
-    // Cell with a slightly-larger rounded tile instead — the panel then traces
-    // the board's true outline. (ADR-0006)
+    // Cell with a slightly-larger rounded tile instead. (ADR-0006)
     const pad = this.layout.cell * 0.22;
     if (this.boardHasVoids()) {
       const tile = this.layout.cell + pad; // overlap so neighbours merge
@@ -1317,60 +781,13 @@ export class GameView {
       });
     }
 
-    // generator machines above their columns
     const cell = this.layout.cell;
-    for (const c of this.game.board.generatorColumns()) {
-      const cx = this.layout.originX + c * cell + cell / 2;
-      const my = this.layout.originY - cell * 0.42;
-      const mw = cell * 0.78;
-      const mh = cell * 0.5;
-      k.drawRect({
-        pos: k.vec2(cx - mw / 2, my - mh / 2),
-        width: mw,
-        height: mh,
-        radius: cell * 0.1,
-        color: k.rgb(120, 130, 150),
-        outline: { width: 2, color: k.rgb(80, 90, 110) },
-      });
-      k.drawText({ text: "⚙️", pos: k.vec2(cx, my), size: cell * 0.34, anchor: "center", color: this.white });
-    }
-
-    // cell backgrounds + jelly coating (Voids are outside the shape — skip them
-    // so the board reads as its true outline, ADR-0006)
+    // cell backgrounds (Voids are outside the shape — skip them, ADR-0006)
     for (let r = 0; r < this.rows; r++)
       for (let c = 0; c < this.cols; c++) {
         if (this.game.board.isVoid(r, c)) continue;
         const { x, y } = cellCenter(this.layout, r, c);
         drawCellBg(k, x, y, cell);
-        const layers = this.viewJelly[r]?.[c] ?? 0;
-        if (layers > 0) {
-          // vivid violet coating with a darker rim — clearly visible, and each
-          // extra layer reads stronger
-          k.drawRect({
-            pos: k.vec2(x - cell / 2 + 2, y - cell / 2 + 2),
-            width: cell - 4,
-            height: cell - 4,
-            radius: cell * 0.22,
-            color: k.rgb(JELLY_FILL[0], JELLY_FILL[1], JELLY_FILL[2]),
-            opacity: Math.min(0.82, 0.52 + 0.2 * (layers - 1)),
-            outline: {
-              width: Math.max(2, cell * 0.06),
-              color: k.rgb(JELLY_OUTLINE[0], JELLY_OUTLINE[1], JELLY_OUTLINE[2]),
-            },
-          });
-        }
-        if (this.viewJam[r]?.[c]) {
-          // a glossy red jam coating under the candy
-          k.drawRect({
-            pos: k.vec2(x - cell / 2 + 2, y - cell / 2 + 2),
-            width: cell - 4,
-            height: cell - 4,
-            radius: cell * 0.22,
-            color: k.rgb(JAM_FILL[0], JAM_FILL[1], JAM_FILL[2]),
-            opacity: 0.7,
-            outline: { width: Math.max(2, cell * 0.06), color: k.rgb(JAM_OUTLINE[0], JAM_OUTLINE[1], JAM_OUTLINE[2]) },
-          });
-        }
       }
 
     // selection highlight (never on a Void)
@@ -1408,37 +825,10 @@ export class GameView {
       }
     }
 
-    // candies (hinted tiles bounce up a touch). The in-flight fish is skipped
-    // here and drawn last so it stays on top of every other tile.
-    const drawSprite = (s: Sprite) => {
+    // candies (hinted tiles bounce up a touch)
+    for (const s of this.sprites.values()) {
       const dy = this.spriteInHint(s.id) ? -hintBounce : 0;
-      drawCandy(
-        k,
-        s.colour,
-        s.special,
-        s.x,
-        s.y + dy,
-        this.layout.cell,
-        s.scale,
-        s.ingredient,
-        s.blocker,
-        s.ingredientKind,
-        s.frozen,
-        s.box,
-        s.boxHits,
-        s.blockerHits,
-        s.gum,
-        s.gumHits,
-        s.cased,
-        s.caseHits,
-        s.chocolate,
-      );
-    };
-    for (const s of this.sprites.values())
-      if (s.id !== this.flyingFishId) drawSprite(s);
-    if (this.flyingFishId != null) {
-      const fish = this.sprites.get(this.flyingFishId);
-      if (fish) drawSprite(fish);
+      drawCandy(k, s.colour, s.special, s.x, s.y + dy, this.layout.cell, s.scale);
     }
 
     this.drawHud();
@@ -1447,18 +837,15 @@ export class GameView {
     // goal) over the board + HUD, but under the end overlay.
     this.effects.draw();
 
-    // The end overlay appears only after the linger (tick handles the sting and
-    // the countdown), so the final board moves stay visible for a beat.
     const outcome = this.game.outcome();
     if (outcome !== "playing" && !this.busy && this.endHold <= 0)
       this.drawOverlay(outcome === "won");
 
-    // Particles last so clear-bursts and the win confetti shower render on top
-    // of the board, HUD, and the win overlay.
+    // Particles last so clear-bursts and the win confetti shower render on top.
     this.particles.draw();
   }
 
-  /** A soft rounded HUD panel (legacy style). */
+  /** A soft rounded HUD panel. */
   private panel(x: number, y: number, w: number, h: number) {
     const k = this.k;
     k.drawRect({
@@ -1475,18 +862,14 @@ export class GameView {
     });
   }
 
-  /** A small "‹ Back" pill in the top-left corner; abandons the game. */
-  private drawBackButton() {
+  /** A small round pill button in the top-left/right; returns its hit rect. */
+  private drawPill(text: string, x: number, y: number): { x: number; y: number; w: number; h: number } {
     const k = this.k;
     const bh = Math.max(28, Math.min(40, this.k.height() * 0.045));
-    const text = "‹ Back";
     const size = bh * 0.42;
     const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
     const bw = m.width + bh * 0.9;
-    // top-left corner
-    const x = Math.max(6, this.k.width() * 0.02);
-    const y = Math.max(6, this.k.height() * 0.012);
-    this.backRect = { x, y, w: bw, h: bh };
+    const rect = { x, y, w: bw, h: bh };
     k.drawRect({
       pos: k.vec2(x, y),
       width: bw,
@@ -1500,9 +883,10 @@ export class GameView {
       text,
       pos: k.vec2(x + bw / 2, y + bh / 2),
       size,
-      color: k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]),
+      ...emojiText(k, k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2])),
       anchor: "center",
     });
+    return rect;
   }
 
   private drawHud() {
@@ -1514,235 +898,41 @@ export class GameView {
     const accent = k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]);
     const obj = this.game.objective;
 
-    // Back button first — the panels start below it so nothing overlaps.
-    this.drawBackButton();
-    const panelTop = this.backRect.y + this.backRect.h + h * 0.04;
+    // Top-row buttons: Music (left) and "?" tutorial (right).
+    const topY = Math.max(6, this.k.height() * 0.012);
+    this.musicRect = this.drawPill(`♪ ${this.music.label}`, Math.max(6, this.k.width() * 0.02), topY);
+    const helpW = Math.max(28, Math.min(40, this.k.height() * 0.045)) + 12;
+    this.helpRect = this.drawPill("?", this.k.width() - helpW - Math.max(6, this.k.width() * 0.02), topY);
+
+    const panelTop = topY + this.musicRect.h + h * 0.04;
     const panelH = Math.min(h * 0.62, h - panelTop - h * 0.06);
     const panelY = panelTop;
     const movesW = Math.max(86, this.layout.boardW * 0.32);
 
-    // --- Moves panel (left) — shows the clock instead for timed challenges. ---
+    // --- Moves panel (left) ---
     this.panel(left, panelY, movesW, panelH);
-    const timed = this.game.cfg.objective.kind === "beat-clock";
-    let counterLabel = "Moves";
-    let counterValue = `${this.game.movesLeft}`;
-    if (timed) {
-      const total = (this.game.cfg.objective as { seconds: number }).seconds;
-      const remaining = Math.max(0, Math.ceil(total - this.game.elapsed));
-      counterLabel = "Time";
-      counterValue = `${remaining}s`;
-    }
-    // During a Sugar Crush, show the leftover-move count ticking down to 0.
-    if (this.finaleMoves >= 0) counterValue = `${this.finaleMoves}`;
     k.drawText({
-      text: counterLabel,
+      text: "Moves",
       pos: k.vec2(left + movesW / 2, panelY + panelH * 0.3),
       size: panelH * 0.24,
       color: dark,
       anchor: "center",
     });
     k.drawText({
-      text: counterValue,
+      text: `${this.game.movesLeft}`,
       pos: k.vec2(left + movesW / 2, panelY + panelH * 0.68),
       size: panelH * 0.38,
       color: accent,
       anchor: "center",
     });
 
-    // --- Goal panel (right) ---
+    // --- Goal panel (right): collect one (or more) Target Colours ---
     const goalX = left + movesW + this.layout.cell * 0.3;
     const goalW = right - goalX;
     this.panel(goalX, panelY, goalW, panelH);
 
-    const spec = this.game.cfg.objective;
-    if (spec.kind === "collect-ingredients") {
-      const count = spec.count;
-      // Avalanche collects many same-kind parts, so once the goal exceeds the
-      // distinct-part row we show a running count instead of a parts row.
-      if (count > BURGER_PARTS.length) {
-        const done = this.viewCollected >= count;
-        k.drawText({
-          text: "Parts collected",
-          pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-          size: panelH * 0.22,
-          color: dark,
-          anchor: "center",
-        });
-        this.fitText(
-          `${Math.min(this.viewCollected, count)} / ${count}`,
-          goalX + goalW / 2,
-          panelY + panelH * 0.68,
-          goalW * 0.9,
-          panelH * 0.38,
-          done ? accent : accent,
-        );
-        return;
-      }
-      const done = this.viewBurger.size >= count;
-      this.fitText(
-        done ? "Burger complete!" : "Build the burger",
-        goalX + goalW / 2,
-        panelY + panelH * 0.28,
-        goalW * 0.9,
-        panelH * 0.22,
-        done ? accent : dark,
-      );
-      if (done) {
-        k.drawText({
-          text: BURGER_DONE,
-          pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.66),
-          size: panelH * 0.42,
-          anchor: "center",
-          color: this.white,
-        });
-      } else {
-        // a row of parts; collected ones are solid, the rest faint
-        const slot = goalW / (count + 1);
-        for (let i = 0; i < count; i++) {
-          k.drawText({
-            text: BURGER_PARTS[i % BURGER_PARTS.length],
-            pos: k.vec2(goalX + slot * (i + 1), panelY + panelH * 0.64),
-            size: panelH * 0.34,
-            anchor: "center",
-            color: this.white,
-            opacity: this.viewBurger.has(i) ? 1 : 0.22,
-          });
-        }
-      }
-      return;
-    }
-    if (spec.kind === "clear-jelly") {
-      let left = 0;
-      for (const row of this.viewJelly) for (const v of row) left += v;
-      k.drawText({
-        text: "Jelly left",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.24,
-        color: dark,
-        anchor: "center",
-      });
-      k.drawText({
-        text: `${left}`,
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.68),
-        size: panelH * 0.38,
-        color: accent,
-        anchor: "center",
-      });
-      return;
-    }
-    if (spec.kind === "score" || spec.kind === "beat-clock") {
-      k.drawText({
-        text: "Score",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.24,
-        color: dark,
-        anchor: "center",
-      });
-      this.fitText(
-        `${this.game.score.toLocaleString()} / ${spec.target.toLocaleString()}`,
-        goalX + goalW / 2,
-        panelY + panelH * 0.68,
-        goalW * 0.9,
-        panelH * 0.3,
-        accent,
-      );
-      return;
-    }
-    if (spec.kind === "make-specials") {
-      k.drawText({
-        text: "Specials made",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.22,
-        color: dark,
-        anchor: "center",
-      });
-      this.fitText(
-        `${Math.min(this.game.specialsMade, spec.count)} / ${spec.count}`,
-        goalX + goalW / 2,
-        panelY + panelH * 0.68,
-        goalW * 0.9,
-        panelH * 0.38,
-        accent,
-      );
-      return;
-    }
-    if (spec.kind === "free-items") {
-      k.drawText({
-        text: "Freed",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.22,
-        color: dark,
-        anchor: "center",
-      });
-      this.fitText(
-        `🐻 ${Math.min(this.viewFreed, spec.count)} / ${spec.count}`,
-        goalX + goalW / 2,
-        panelY + panelH * 0.68,
-        goalW * 0.9,
-        panelH * 0.36,
-        accent,
-      );
-      return;
-    }
-    if (spec.kind === "clear-chocolate") {
-      k.drawText({
-        text: "Chocolate left",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.22,
-        color: dark,
-        anchor: "center",
-      });
-      this.fitText(
-        `🍫 ${this.viewChoco}`,
-        goalX + goalW / 2,
-        panelY + panelH * 0.68,
-        goalW * 0.9,
-        panelH * 0.38,
-        accent,
-      );
-      return;
-    }
-    if (spec.kind === "clear-blockers") {
-      k.drawText({
-        text: "Bricks left",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.22,
-        color: dark,
-        anchor: "center",
-      });
-      this.fitText(
-        `🧱 ${this.viewBlockers}`,
-        goalX + goalW / 2,
-        panelY + panelH * 0.68,
-        goalW * 0.9,
-        panelH * 0.38,
-        accent,
-      );
-      return;
-    }
-    if (spec.kind === "spread-jam") {
-      let jammed = 0;
-      for (const row of this.viewJam) for (const v of row) if (v) jammed++;
-      k.drawText({
-        text: "Jam spread",
-        pos: k.vec2(goalX + goalW / 2, panelY + panelH * 0.3),
-        size: panelH * 0.22,
-        color: dark,
-        anchor: "center",
-      });
-      this.fitText(
-        `🍓 ${Math.min(jammed, spec.count)} / ${spec.count}`,
-        goalX + goalW / 2,
-        panelY + panelH * 0.68,
-        goalW * 0.9,
-        panelH * 0.36,
-        accent,
-      );
-      return;
-    }
-
-    // collect-colours (default). With a single Target Colour, name it in the
-    // header ("Win 🍓!"); with several, fall back to a generic "Goal".
+    // With a single Target Colour, name it in the header ("Win 🍓!"); with
+    // several, fall back to a generic "Goal".
     const goalLabel =
       obj.targets.length === 1
         ? `Win ${COLOUR_THEMES[obj.targets[0] as Colour].emoji}!`
@@ -1755,9 +945,6 @@ export class GameView {
       ...emojiText(k, dark),
       anchor: "center",
     });
-    // goal chips: emoji + count, evenly spread. With many targets (e.g. Rainbow
-    // Platter's five) a slot gets narrow, so stack the count under the emoji and
-    // size both to the slot — keeps everything inside the panel on phones.
     const chips = Math.max(1, obj.targets.length);
     const slot = goalW / chips;
     const wide = chips <= 3;
@@ -1832,11 +1019,12 @@ export class GameView {
       k.rgb(TEXT_DARK[0], TEXT_DARK[1], TEXT_DARK[2]),
     );
 
-    // play-again pill
+    // replay pill
     const bw = w * 0.6;
     const bh = 52 * pop;
     const bx = cx - bw / 2;
     const by = py + ph * 0.58;
+    this.replayRect = { x: bx, y: by, w: bw, h: bh };
     k.drawRect({
       pos: k.vec2(bx, by),
       width: bw,
@@ -1845,7 +1033,7 @@ export class GameView {
       color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]),
     });
     this.fitText(
-      "Back to Challenges",
+      won ? "Play Again" : "Try Again",
       cx,
       by + bh / 2,
       bw * 0.88,
@@ -1858,10 +1046,6 @@ export class GameView {
    * Centered single line that shrinks to fit `maxW` (down to a floor) so HUD and
    * overlay labels never leak out of their panel on narrow phone screens.
    */
-  // Memo for fitText's shrink-to-fit search: the result size for a given
-  // (text, size, maxW) never changes between frames, but formatText (glyph
-  // shaping/measuring) is costly, so a static HUD label was re-measuring up to
-  // 8× every frame. Cache the solved size and skip the loop on repeats.
   private fitTextCache = new Map<string, number>();
 
   private fitText(
@@ -1882,7 +1066,6 @@ export class GameView {
         if (m.width <= maxW || s <= size * 0.5) break;
         s *= 0.9;
       }
-      // Bound the cache so unbounded score/count strings can't grow it forever.
       if (this.fitTextCache.size > 256) this.fitTextCache.clear();
       this.fitTextCache.set(key, s);
     }

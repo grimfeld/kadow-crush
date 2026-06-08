@@ -15,8 +15,6 @@ import { makeRng } from "../src/core/rng.ts";
 function challengeFor(t: ShapeTemplate): ChallengeConfig {
   return {
     id: `test-${t.id}`,
-    name: t.id,
-    blurb: "",
     rows: t.rows,
     cols: t.cols,
     colourCount: 5,
@@ -27,7 +25,7 @@ function challengeFor(t: ShapeTemplate): ChallengeConfig {
 
 /**
  * Build a Board whose shape is forced to `t` by stubbing SHAPE_TEMPLATES to a
- * single entry and using a "varied" Challenge. Restores the registry after.
+ * single entry (the Board always picks from SHAPE_TEMPLATES). Restores after.
  */
 function boardWithShape(t: ShapeTemplate, seed = 1): Board {
   const cfg: ChallengeConfig = { ...challengeFor(t), shape: "varied" };

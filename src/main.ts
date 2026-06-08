@@ -19,7 +19,7 @@ const k = kaplay({
   debug: false,
 });
 
-// Opens on the level-select menu; picking a challenge starts a seeded game.
+// Boots straight into a single seeded game (ADR-0007 — no menu).
 const view = new GameView(k);
 
 // Dev-only: expose the view so the browser smoke test can plan a legal move.

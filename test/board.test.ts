@@ -12,8 +12,6 @@ import type { Candy, Step } from "../src/core/types.ts";
 // its own coverage in shapes.test.ts.
 const RECT: ChallengeConfig = {
   id: "test-rect",
-  name: "Test Rect",
-  blurb: "",
   rows: ROWS,
   cols: COLS,
   colourCount: 5,
@@ -22,10 +20,10 @@ const RECT: ChallengeConfig = {
 };
 
 function findMatchRun(grid: (Candy | null)[][]): string | null {
-  // Mirror Board.colourAt: a Color Bomb (null colour) and a Frozen candy never
-  // match; other coloured candies (incl. striped/wrapped/etc.) do.
+  // Mirror Board.colourAt: a Color Bomb (null colour) never matches; other
+  // coloured candies (incl. striped/wrapped) do.
   const mc = (cell: Candy | null): number | null =>
-    cell && cell.special !== "color-bomb" && !cell.frozen ? cell.colour : null;
+    cell && cell.special !== "color-bomb" ? cell.colour : null;
   // horizontal
   for (let r = 0; r < ROWS; r++)
     for (let c = 0; c <= COLS - 3; c++) {

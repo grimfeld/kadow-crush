@@ -1,23 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { Board } from "../src/core/board.ts";
-import { CHALLENGES, type ChallengeConfig } from "../src/core/config.ts";
+import { DEFAULT_CHALLENGE, type ChallengeConfig } from "../src/core/config.ts";
 import { Game } from "../src/core/game.ts";
 import { makeRng } from "../src/core/rng.ts";
 
-const scoreChallenge: ChallengeConfig = {
-  id: "test-score",
-  name: "Test Score",
-  blurb: "",
+// A fixed rectangular collect challenge (no varied shape) so dimensions are
+// deterministic for the config-drives-board assertions.
+const rectChallenge: ChallengeConfig = {
+  id: "test-collect",
   rows: 6,
   cols: 5,
   colourCount: 4,
   moves: 10,
-  objective: { kind: "score", target: 300 },
+  objective: { kind: "collect-colours", targetCount: 2, quota: 8 },
 };
 
 describe("challenge config drives the board", () => {
   it("respects custom dimensions and colour count", () => {
-    const board = new Board(makeRng(3), scoreChallenge);
+    const board = new Board(makeRng(3), rectChallenge);
     expect(board.rows).toBe(6);
     expect(board.cols).toBe(5);
     expect(board.grid.length).toBe(6);
@@ -37,28 +37,27 @@ describe("challenge config drives the board", () => {
     for (const c of colours) expect(c).toBeLessThan(4);
   });
 
-  it("every shipped challenge has a non-empty tutorial", () => {
-    for (const cfg of CHALLENGES) {
-      expect(cfg.tutorial && cfg.tutorial.length).toBeGreaterThan(0);
-      for (const line of cfg.tutorial!) expect(line.trim().length).toBeGreaterThan(0);
-    }
+  it("the shipped game has a non-empty tutorial", () => {
+    expect(
+      DEFAULT_CHALLENGE.tutorial && DEFAULT_CHALLENGE.tutorial.length,
+    ).toBeGreaterThan(0);
+    for (const line of DEFAULT_CHALLENGE.tutorial!)
+      expect(line.trim().length).toBeGreaterThan(0);
   });
 
-  it("generates solvable boards across seeds for every registered challenge", () => {
-    for (const cfg of CHALLENGES) {
-      for (let seed = 1; seed <= 25; seed++) {
-        expect(new Board(makeRng(seed), cfg).hasLegalMove()).toBe(true);
-      }
+  it("generates solvable boards across seeds", () => {
+    for (let seed = 1; seed <= 50; seed++) {
+      expect(new Board(makeRng(seed), DEFAULT_CHALLENGE).hasLegalMove()).toBe(true);
+      expect(new Board(makeRng(seed), rectChallenge).hasLegalMove()).toBe(true);
     }
   });
 });
 
-describe("score objective", () => {
-  it("default Game is collect-colours (Berry Sort), budget scales to board size", () => {
-    // Berry Sort now varies its shape/size and scales quota/moves to the
-    // playable-cell count (ADR-0006), so the budget is no longer a fixed 24 —
-    // assert the kind/targets, and that the scaled budget is sane (≤ nominal 24
-    // and at least the floor of 1).
+describe("collect-colours objective", () => {
+  it("default Game is Berry Sort: collect one fruit, scaled budget", () => {
+    // Berry Sort varies its shape/size and scales quota/moves to the playable-
+    // cell count (ADR-0006), so the budget is no longer a fixed 24 — assert the
+    // kind/targets and that the scaled budget is sane.
     const game = new Game(123);
     expect(game.cfg.objective.kind).toBe("collect-colours");
     expect(game.objective.targets.length).toBe(1); // Berry Sort: one fruit
@@ -66,22 +65,24 @@ describe("score objective", () => {
     expect(game.movesLeft).toBeLessThanOrEqual(24);
   });
 
-  it("a score Game has no colour targets and starts at zero", () => {
-    const game = new Game(1, scoreChallenge);
-    expect(game.objective.targets.length).toBe(0);
-    expect(game.score).toBe(0);
+  it("picks the configured number of distinct targets at zero collected", () => {
+    const game = new Game(1, rectChallenge);
+    expect(game.objective.targets.length).toBe(2);
+    expect(new Set(game.objective.targets).size).toBe(2);
+    for (const t of game.objective.targets)
+      expect(game.objective.collected.get(t)).toBe(0);
     expect(game.outcome()).toBe("playing");
   });
 
-  it("wins when the score target is reached", () => {
-    const game = new Game(1, scoreChallenge);
-    game.score = 300;
+  it("wins when every quota is met", () => {
+    const game = new Game(1, rectChallenge);
+    for (const t of game.objective.targets)
+      game.objective.collected.set(t, game.objective.quota);
     expect(game.outcome()).toBe("won");
   });
 
-  it("loses a score Game when moves run out short of target", () => {
-    const game = new Game(1, scoreChallenge);
-    game.score = 100;
+  it("loses when moves run out short of quota", () => {
+    const game = new Game(1, rectChallenge);
     game.movesLeft = 0;
     expect(game.outcome()).toBe("lost");
   });

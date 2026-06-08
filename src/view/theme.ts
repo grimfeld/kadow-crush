@@ -44,51 +44,9 @@ export const GRID_PANEL_BORDER: [number, number, number] = [120, 180, 215];
 // Empty cell slot inside the panel.
 export const CELL_BG: [number, number, number] = [225, 238, 247];
 
-// Jelly coating drawn over a cell (Clear-Jelly challenges). A vivid violet that
-// stands out against the light-blue board (the old pale blue blended in), with
-// a darker outline so each jellied tile is unmistakable.
-export const JELLY_FILL: [number, number, number] = [171, 92, 230];
-export const JELLY_OUTLINE: [number, number, number] = [120, 48, 178];
-
-// Special-tile base (when a candy becomes a Special its tile keeps the colour
-// tint but a bomb gets a neutral dark base for contrast).
+// Special-tile base: a candy turned Special keeps its colour tint, but a Color
+// Bomb gets a neutral dark base for contrast.
 export const BOMB_FILL: [number, number, number] = [70, 70, 90];
-
-// Ingredient pieces (Collect-Ingredients challenges) — a warm tile holding a
-// distinct burger part. Each challenge uses the first `count` parts, stacked
-// top-to-bottom into a burger; collect them all to win.
-export const INGREDIENT_FILL: [number, number, number] = [255, 196, 160];
-export const BURGER_PARTS = ["🍅", "🥬", "🧀", "🥩", "🥓"];
-export const BURGER_DONE = "🍔";
-
-// Blocker (immovable obstacle) — a dull stone tile that reads as "not a candy".
-export const BLOCKER_FILL: [number, number, number] = [150, 150, 160];
-export const BLOCKER_EMOJI = "🧱";
-
-// Frost coating over a Frozen candy (Color Lock) — pale icy blue with a crisp
-// rim, drawn translucent so the candy's colour still shows through.
-export const FROST_FILL: [number, number, number] = [200, 232, 255];
-export const FROST_OUTLINE: [number, number, number] = [120, 190, 240];
-
-// Gift Box crate (Gift Box challenge) — a warm parcel tile with hit pips.
-export const BOX_FILL: [number, number, number] = [246, 211, 140];
-export const BOX_OUTLINE: [number, number, number] = [196, 142, 60];
-
-// Bubble Gum tile — glossy bubblegum pink, multi-hit, pops a 3x3 on the last hit.
-export const GUM_FILL: [number, number, number] = [255, 150, 200];
-export const GUM_OUTLINE: [number, number, number] = [210, 80, 150];
-
-// Cased item (Free-It) — a wooden crate/cage holding a trapped critter.
-export const CASE_FILL: [number, number, number] = [205, 170, 120];
-export const CASE_OUTLINE: [number, number, number] = [140, 100, 60];
-
-// Chocolate (Clear-the-Chocolate) — a glossy brown bar that spreads.
-export const CHOCO_FILL: [number, number, number] = [110, 70, 40];
-export const CHOCO_OUTLINE: [number, number, number] = [70, 42, 22];
-
-// Jam coating (Spread-the-Jam) — glossy red preserve under a candy.
-export const JAM_FILL: [number, number, number] = [220, 40, 60];
-export const JAM_OUTLINE: [number, number, number] = [150, 20, 40];
 
 // HUD panel chrome.
 export const PANEL_FILL: [number, number, number] = [255, 255, 255];

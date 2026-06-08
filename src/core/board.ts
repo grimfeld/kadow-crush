@@ -473,10 +473,12 @@ export class Board implements BoardRead {
 
     // Priority: color-bomb (≥5) > wrapped (T/L) > striped (line of 4). Anything
     // else — a plain line of 3, or a blob with no long line — just clears.
+    // A horizontal line of 4 mints a row-clearing Striped (it fires along the
+    // match), a vertical line a column-clearing one — per CONTEXT.md / the genre.
     let special: SpecialType | null = null;
     if (maxLine >= 5) special = colorBomb;
     else if (isLLshape) special = wrapped;
-    else if (maxLine === 4) special = maxH >= 4 ? stripedCol : stripedRow;
+    else if (maxLine === 4) special = maxH >= 4 ? stripedRow : stripedCol;
     if (!special) return null;
 
     // Prefer the swapped cell as the spawn point if it lies in the component.

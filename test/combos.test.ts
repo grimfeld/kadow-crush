@@ -57,7 +57,27 @@ describe("special creation by shape", () => {
     const made = res.steps
       .filter((s) => s.kind === "special-create")
       .map((s: any) => s.special as SpecialType);
-    expect(made.some((sp) => sp.kind === "striped")).toBe(true);
+    // a HORIZONTAL line of 4 fires along the match → it clears its ROW
+    expect(made).toContainEqual({ kind: "striped", axis: "row" });
+  });
+
+  it("a vertical 4-in-a-column creates a column-clearing Striped", () => {
+    const b = makeBoard(3);
+    // background of colour 1; a vertical run of colour-0 completed by a swap.
+    for (let r = 0; r <= 5; r++)
+      for (let c = 1; c <= 3; c++) b.grid[r][c] = { id: r * 10 + c, colour: 1, special: null };
+    b.grid[1][2] = { id: 12, colour: 0, special: null };
+    b.grid[2][2] = { id: 22, colour: 0, special: null };
+    b.grid[3][2] = { id: 32, colour: 0, special: null };
+    b.grid[4][2] = { id: 42, colour: 1, special: null };
+    b.grid[4][3] = { id: 43, colour: 0, special: null };
+    const res = b.trySwap({ row: 4, col: 3 }, { row: 4, col: 2 });
+    expect(res.consumedMove).toBe(true);
+    const made = res.steps
+      .filter((s) => s.kind === "special-create")
+      .map((s: any) => s.special as SpecialType);
+    // a VERTICAL line of 4 fires along the match → it clears its COLUMN
+    expect(made).toContainEqual({ kind: "striped", axis: "col" });
   });
 
   it("a 5-in-a-line swap creates a color bomb", () => {

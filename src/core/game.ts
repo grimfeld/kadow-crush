@@ -77,8 +77,8 @@ export class Game {
     if (this.outcome() !== "playing")
       return { steps: [], consumedMove: false };
 
-    const { steps, consumedMove, cleared } = this.board.trySwap(a, b);
-    if (consumedMove) this.creditMove(cleared);
+    const { steps, consumedMove } = this.board.trySwap(a, b);
+    if (consumedMove) this.creditMove(steps);
     return { steps, consumedMove };
   }
 
@@ -91,20 +91,27 @@ export class Game {
     if (this.outcome() !== "playing")
       return { steps: [], consumedMove: false };
 
-    const { steps, consumedMove, cleared } = this.board.tryActivate(at);
-    if (consumedMove) this.creditMove(cleared);
+    const { steps, consumedMove } = this.board.tryActivate(at);
+    if (consumedMove) this.creditMove(steps);
     return { steps, consumedMove };
   }
 
-  /** Spend a Move and credit the cleared Target Colours toward the Objective. */
-  private creditMove(cleared: Colour[]) {
+  /**
+   * Spend a Move and credit the cleared Target Colours toward the Objective. The
+   * tally is derived from the Move's Steps — the single source of truth — rather
+   * than a side-channel: every Cell that left the Board emitted its Colour in a
+   * `clear` or `special-activate` Step (a Color Bomb's null Colour counts toward
+   * nothing). Overlapping blasts don't double-count: a Cell clears once, so it
+   * appears in exactly one Step's `colours`.
+   */
+  private creditMove(steps: Step[]) {
     this.movesLeft--;
-    for (const colour of cleared) {
-      if (this.objective.collected.has(colour)) {
-        this.objective.collected.set(
-          colour,
-          (this.objective.collected.get(colour) ?? 0) + 1,
-        );
+    for (const step of steps) {
+      if (step.kind !== "clear" && step.kind !== "special-activate") continue;
+      for (const colour of step.colours) {
+        if (colour !== null && this.objective.collected.has(colour)) {
+          this.objective.collected.set(colour, (this.objective.collected.get(colour) ?? 0) + 1);
+        }
       }
     }
   }

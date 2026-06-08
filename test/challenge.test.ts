@@ -3,7 +3,7 @@ import { Board } from "../src/core/board.ts";
 import { DEFAULT_CHALLENGE, type ChallengeConfig } from "../src/core/config.ts";
 import { Game } from "../src/core/game.ts";
 import { makeRng } from "../src/core/rng.ts";
-import { stripedRow } from "../src/core/types.ts";
+import { stripedCol, stripedRow } from "../src/core/types.ts";
 
 // A fixed rectangular collect challenge (no varied shape) so dimensions are
 // deterministic for the config-drives-board assertions.
@@ -105,5 +105,51 @@ describe("collect-colours objective", () => {
     const res = game.activateSpecial({ row: 2, col: 2 });
     expect(res.consumedMove).toBe(false);
     expect(game.movesLeft).toBe(before);
+  });
+
+  it("credits each cleared Target Colour, derived from the Move's Steps", () => {
+    const game = new Game(1, rectChallenge);
+    const target = game.objective.targets[0];
+    const before = game.objective.collected.get(target) ?? 0;
+    // Fill row 2 with the target colour and plant a striped-row in it; firing it
+    // clears the whole row, so the tally must advance by however many target
+    // candies the Steps report cleared (and by nothing for other colours).
+    const W = game.board.cols;
+    for (let c = 0; c < W; c++)
+      game.board.grid[2][c] = { id: 6000 + c, colour: target, special: null };
+    game.board.grid[2][3] = { id: 6300, colour: target, special: stripedRow };
+
+    const res = game.activateSpecial({ row: 2, col: 3 });
+    expect(res.consumedMove).toBe(true);
+
+    // Count target-colour clears straight from the Steps (the source of truth).
+    let clearedTarget = 0;
+    for (const s of res.steps) {
+      if (s.kind === "clear" || s.kind === "special-activate")
+        clearedTarget += s.colours.filter((col) => col === target).length;
+    }
+    expect(clearedTarget).toBeGreaterThanOrEqual(W); // the whole row, at least
+    expect(game.objective.collected.get(target)).toBe(before + clearedTarget);
+  });
+
+  it("does not double-count a Cell two overlapping blasts both cover", () => {
+    const game = new Game(2, rectChallenge);
+    const target = game.objective.targets[0];
+    // Two crossing stripeds (a row and a col) meet at (4,4): the shared cell is
+    // covered by both footprints but clears once, so it credits once.
+    for (let c = 0; c < game.board.cols; c++)
+      game.board.grid[4][c] = { id: 7000 + c, colour: target, special: null };
+    for (let r = 0; r < game.board.rows; r++)
+      game.board.grid[r][4] = { id: 7100 + r, colour: target, special: null };
+    game.board.grid[4][4] = { id: 7444, colour: target, special: stripedRow };
+    game.board.grid[4][5] = { id: 7445, colour: target, special: stripedCol };
+
+    const res = game.activateSpecial({ row: 4, col: 4 }); // tap-fire the row striped
+    expect(res.consumedMove).toBe(true);
+    // Every id in the clear/activate Steps is unique — no Cell credited twice.
+    const ids: number[] = [];
+    for (const s of res.steps)
+      if (s.kind === "clear" || s.kind === "special-activate") ids.push(...s.ids);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });

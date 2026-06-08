@@ -54,8 +54,10 @@ export interface Pos {
 export type Step =
   | { kind: "swap"; a: Pos; b: Pos }
   | { kind: "swap-revert"; a: Pos; b: Pos }
-  // `ids` runs parallel to `cells`: the candy id cleared at each cell.
-  | { kind: "clear"; cells: Pos[]; ids: number[]; bySpecial: boolean }
+  // `ids` and `colours` run parallel to `cells`: the candy id and Colour cleared
+  // at each cell (`colours` is the single source the Objective tally is derived
+  // from — a Color Bomb's null colour counts toward nothing).
+  | { kind: "clear"; cells: Pos[]; ids: number[]; colours: (Colour | null)[]; bySpecial: boolean }
   | {
       kind: "special-create";
       at: Pos;
@@ -72,6 +74,7 @@ export type Step =
       origin: Pos;
       cleared: Pos[];
       ids: number[];
+      colours: (Colour | null)[];
       special: SpecialType;
       fx: Fx;
     }

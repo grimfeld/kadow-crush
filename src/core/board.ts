@@ -182,14 +182,13 @@ export class Board implements BoardRead {
    * Attempt a swap of two adjacent cells. Returns the ordered Steps to animate.
    * If illegal, returns a single swap-revert step and `consumedMove = false`.
    */
-  trySwap(a: Pos, b: Pos): { steps: Step[]; consumedMove: boolean; cleared: Colour[] } {
-    const cleared: Colour[] = [];
+  trySwap(a: Pos, b: Pos): { steps: Step[]; consumedMove: boolean } {
     if (!adjacent(a, b) || samePos(a, b)) {
-      return { steps: [], consumedMove: false, cleared };
+      return { steps: [], consumedMove: false };
     }
     // A Void is not a playable Cell — a swap touching one is a no-op (ADR-0006).
     if (this.isVoid(a.row, a.col) || this.isVoid(b.row, b.col)) {
-      return { steps: [], consumedMove: false, cleared };
+      return { steps: [], consumedMove: false };
     }
 
     const candyA = this.gridObj.candyAt(a)!;
@@ -202,20 +201,20 @@ export class Board implements BoardRead {
     if (!specialFire && !makesMatch) {
       // illegal — revert
       this.gridObj.swap(a, b);
-      return { steps: [{ kind: "swap-revert", a, b }], consumedMove: false, cleared };
+      return { steps: [{ kind: "swap-revert", a, b }], consumedMove: false };
     }
 
     const steps: Step[] = [{ kind: "swap", a, b }];
 
     // Swap-only Special activation. Fire any swapped Special(s) immediately.
     if (specialFire) {
-      this.activateSwappedSpecials(steps, a, b, cleared);
+      this.activateSwappedSpecials(steps, a, b);
     }
 
     // Resolve the cascade (matches → specials-create → fall → spawn → repeat).
-    this.resolve(steps, { swapA: a, swapB: b }, cleared);
+    this.resolve(steps, { swapA: a, swapB: b });
 
-    return { steps, consumedMove: true, cleared };
+    return { steps, consumedMove: true };
   }
 
   /**
@@ -224,25 +223,24 @@ export class Board implements BoardRead {
    * Void or does not hold a Special. A lone Color Bomb fired this way clears a
    * random board Colour (no swap partner to take a Colour from).
    */
-  tryActivate(at: Pos): { steps: Step[]; consumedMove: boolean; cleared: Colour[] } {
-    const cleared: Colour[] = [];
+  tryActivate(at: Pos): { steps: Step[]; consumedMove: boolean } {
     if (this.isVoid(at.row, at.col)) {
-      return { steps: [], consumedMove: false, cleared };
+      return { steps: [], consumedMove: false };
     }
     const candy = this.gridObj.candyAt(at);
     if (!candy || candy.special == null) {
-      return { steps: [], consumedMove: false, cleared };
+      return { steps: [], consumedMove: false };
     }
 
     const steps: Step[] = [];
     this.firing.clear();
-    this.fire(footprint(this, at, candy.special, {}), steps, cleared);
+    this.fire(footprint(this, at, candy.special, {}), steps);
 
     // Resolve the cascade the blast set off. No swap this pass, so Specials made
     // by the cascade spawn at their component centre (planSpecials swap = null).
-    this.resolve(steps, { swapA: at, swapB: at }, cleared);
+    this.resolve(steps, { swapA: at, swapB: at });
 
-    return { steps, consumedMove: true, cleared };
+    return { steps, consumedMove: true };
   }
 
   private hasAnyMatch(): boolean {
@@ -259,7 +257,7 @@ export class Board implements BoardRead {
    * it's a Combo (a list of Blasts from `comboPlan`); otherwise the one Special
    * fires on its own. Every Blast chains any Special it covers.
    */
-  private activateSwappedSpecials(steps: Step[], a: Pos, b: Pos, cleared: Colour[]) {
+  private activateSwappedSpecials(steps: Step[], a: Pos, b: Pos) {
     this.firing.clear();
     const ca = this.gridObj.candyAt(a);
     const cb = this.gridObj.candyAt(b);
@@ -270,12 +268,12 @@ export class Board implements BoardRead {
       // consume both special candies up front so they don't re-chain
       this.firing.add(ca!.id);
       this.firing.add(cb!.id);
-      for (const bl of comboPlan(this, a, b, ca!, cb!)) this.fire(bl, steps, cleared);
+      for (const bl of comboPlan(this, a, b, ca!, cb!)) this.fire(bl, steps);
       return;
     }
     // single special swapped with a normal candy — partner gives the colour
-    if (aSpecial) this.fire(footprint(this, a, aSpecial, { partner: b }), steps, cleared);
-    else if (bSpecial) this.fire(footprint(this, b, bSpecial, { partner: a }), steps, cleared);
+    if (aSpecial) this.fire(footprint(this, a, aSpecial, { partner: b }), steps);
+    else if (bSpecial) this.fire(footprint(this, b, bSpecial, { partner: a }), steps);
   }
 
   /**
@@ -284,7 +282,7 @@ export class Board implements BoardRead {
    * not-yet-firing Special the Blast covered. The `firing` Set prevents a chain
    * from re-detonating a Special already in flight (ADR-0005).
    */
-  private fire(bl: Blast, steps: Step[], cleared: Colour[]) {
+  private fire(bl: Blast, steps: Step[]) {
     const self = this.gridObj.candyAt(bl.origin);
     if (self) this.firing.add(self.id);
 
@@ -297,38 +295,43 @@ export class Board implements BoardRead {
         chain.push({ pos: { ...p }, special: cell.special });
       }
     }
-    const { cells: cl, ids } = this.clearCells(bl.cells, cleared);
+    const { cells: cl, ids, colours } = this.clearCells(bl.cells);
     steps.push({
       kind: "special-activate",
       origin: bl.origin,
       cleared: cl,
       ids,
+      colours,
       special: bl.special,
       fx: bl.fx,
     });
-    for (const c of chain) this.fire(footprint(this, c.pos, c.special, {}), steps, cleared);
+    for (const c of chain) this.fire(footprint(this, c.pos, c.special, {}), steps);
   }
 
   /**
-   * Clear the given cells. Returns the cells that actually held a Candy and the
-   * parallel list of their ids, so the view can animate exactly those sprites.
+   * Clear the given cells. Returns the cells that actually held a Candy, with the
+   * parallel list of their ids (so the view animates exactly those sprites) and
+   * their Colours (the single source the Objective tally is derived from). The
+   * `if (!candy) continue` guard dedupes overlapping blasts: a Cell already
+   * cleared yields no second id/Colour, so nothing double-counts.
    */
-  private clearCells(cells: Pos[], cleared: Colour[]): { cells: Pos[]; ids: number[] } {
+  private clearCells(cells: Pos[]): { cells: Pos[]; ids: number[]; colours: (Colour | null)[] } {
     const outCells: Pos[] = [];
     const ids: number[] = [];
+    const colours: (Colour | null)[] = [];
     for (const p of cells) {
       const candy = this.gridObj.candyAt(p);
       if (!candy) continue;
-      if (candy.colour !== null) cleared.push(candy.colour);
       outCells.push(p);
       ids.push(candy.id);
+      colours.push(candy.colour);
       this.gridObj.set(p, null);
     }
-    return { cells: outCells, ids };
+    return { cells: outCells, ids, colours };
   }
 
   /** Resolve cascades until the board is stable. Appends Steps. */
-  private resolve(steps: Step[], swap: { swapA: Pos; swapB: Pos }, cleared: Colour[]) {
+  private resolve(steps: Step[], swap: { swapA: Pos; swapB: Pos }) {
     let firstPass = true;
     for (;;) {
       // matched cells = the cells of every line run (3+); 2×2 is not a Match
@@ -343,8 +346,14 @@ export class Board implements BoardRead {
         const toClear: Pos[] = [];
         for (const cell of matched) if (!spare.has(key(cell))) toClear.push(cell);
 
-        const cleared2 = this.clearCells(dedupe(toClear), cleared);
-        steps.push({ kind: "clear", cells: cleared2.cells, ids: cleared2.ids, bySpecial: false });
+        const cleared2 = this.clearCells(dedupe(toClear));
+        steps.push({
+          kind: "clear",
+          cells: cleared2.cells,
+          ids: cleared2.ids,
+          colours: cleared2.colours,
+          bySpecial: false,
+        });
 
         // Turn spared cells into Specials in place.
         for (const s of specialsToCreate) {

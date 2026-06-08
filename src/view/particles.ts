@@ -3,6 +3,7 @@
 // advances physics each frame and draw() renders the live particles.
 
 import type { KAPLAYCtx } from "kaplay";
+import { CONFETTI_COLOURS, type RGB } from "./theme.ts";
 
 interface Particle {
   x: number;
@@ -12,7 +13,7 @@ interface Particle {
   life: number; // seconds remaining
   maxLife: number;
   size: number;
-  color: [number, number, number];
+  color: RGB;
   // Confetti extras (round burst particles leave these at defaults).
   confetti?: boolean;
   angle?: number; // current rotation (rad)
@@ -24,16 +25,6 @@ interface Particle {
 }
 
 const GRAVITY = 900; // px/s²
-
-// Bright party palette for confetti (saturated, reads on the light bg).
-const CONFETTI_COLOURS: [number, number, number][] = [
-  [255, 89, 120], // pink
-  [255, 196, 60], // gold
-  [80, 200, 255], // sky
-  [120, 230, 130], // green
-  [180, 120, 255], // violet
-  [255, 140, 70], // orange
-];
 
 export class Particles {
   private list: Particle[] = [];
@@ -50,7 +41,7 @@ export class Particles {
     return ((this.seed >>> 0) % 10000) / 10000;
   }
 
-  burst(x: number, y: number, color: [number, number, number], count = 10) {
+  burst(x: number, y: number, color: RGB, count = 10) {
     for (let i = 0; i < count; i++) {
       const ang = this.rand() * Math.PI * 2;
       const speed = 80 + this.rand() * 220;

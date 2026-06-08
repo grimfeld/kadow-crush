@@ -19,7 +19,7 @@ import { Hud } from "./hud.ts";
 import { SpriteModel } from "./spriteModel.ts";
 import { lerp, makeTweener, type Tweener } from "./anim.ts";
 import { playSound } from "./sound.ts";
-import { BURST_COLOURS, COLOUR_THEMES, FX_TINT } from "./theme.ts";
+import { BURST_COLOURS, COLOUR_THEMES, FX_TINT, type RGB } from "./theme.ts";
 
 const SWAP_MS = 130;
 const CLEAR_MS = 260;
@@ -45,6 +45,23 @@ const PRAISE_Y_RISE = 12; // px higher per cascade rung (so stacks don't overlap
 const PRAISE_MAX_SIZE = 56;
 const PRAISE_SIZE_BASE = 1.1; // × cell, plus PRAISE_SIZE_PER_DEPTH per rung
 const PRAISE_SIZE_PER_DEPTH = 0.1;
+
+// Cascade praise words, tiered by depth (2, 3, 4, 5+); a random one is drawn per
+// rung so repeats feel varied. Data, not logic — edit the copy here.
+const PRAISE_TIERS: string[][] = [
+  ["Sweet!", "Nice!", "Tasty!", "Yum!", "Mmm!", "Pop!"],
+  ["Yummy!", "Delicious!", "Juicy!", "Combo!", "Crunch!", "Zesty!"],
+  ["Scrumptious!", "Mega Combo!", "Fruit Frenzy!", "Sugar Rush!", "Sizzling!"],
+  ["UNSTOPPABLE!", "SUGAR STORM!", "CANDY CHAOS!", "LEGENDARY!", "SWEET-TASTIC!"],
+];
+const PRAISE_COLOURS: RGB[] = [
+  [240, 140, 60], // orange
+  [231, 76, 96], // red
+  [150, 89, 200], // purple
+  [46, 184, 113], // green
+  [52, 130, 219], // blue
+  [236, 64, 160], // pink
+];
 
 export class ResolutionPlayer {
   // Cascade depth within the current Resolution, for escalating praise words.
@@ -334,24 +351,9 @@ export class ResolutionPlayer {
    * repeats feel varied rather than a fixed ladder.
    */
   private praiseCascade(depth: number) {
-    // tiers: depth 2, 3, 4, 5+ — each picks randomly from its bucket
-    const tiers: string[][] = [
-      ["Sweet!", "Nice!", "Tasty!", "Yum!", "Mmm!", "Pop!"],
-      ["Yummy!", "Delicious!", "Juicy!", "Combo!", "Crunch!", "Zesty!"],
-      ["Scrumptious!", "Mega Combo!", "Fruit Frenzy!", "Sugar Rush!", "Sizzling!"],
-      ["UNSTOPPABLE!", "SUGAR STORM!", "CANDY CHAOS!", "LEGENDARY!", "SWEET-TASTIC!"],
-    ];
-    const colours: [number, number, number][] = [
-      [240, 140, 60], // orange
-      [231, 76, 96], // red
-      [150, 89, 200], // purple
-      [46, 184, 113], // green
-      [52, 130, 219], // blue
-      [236, 64, 160], // pink
-    ];
-    const tier = tiers[Math.min(depth - 2, tiers.length - 1)];
+    const tier = PRAISE_TIERS[Math.min(depth - 2, PRAISE_TIERS.length - 1)];
     const word = tier[Math.floor(this.k.rand(0, tier.length))];
-    const colour = colours[Math.floor(this.k.rand(0, colours.length))];
+    const colour = PRAISE_COLOURS[Math.floor(this.k.rand(0, PRAISE_COLOURS.length))];
     const x = this.layout.originX + this.layout.boardW / 2;
     // place it a little higher for each deeper rung so stacked combos don't overlap
     const y = this.layout.originY + this.layout.boardH * PRAISE_Y_FRAC - depth * PRAISE_Y_RISE;

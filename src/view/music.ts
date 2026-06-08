@@ -25,8 +25,11 @@ export const TRACKS: Track[] = [
 const STORAGE_KEY = "kadow.music";
 const VOLUME = 0.4;
 
-/** A selection is either a track id or "off". */
-type Selection = string;
+/** Music off, or a chosen track. (Persisted as the track id or "off".) */
+type Selection = { kind: "off" } | { kind: "track"; id: string };
+
+const OFF: Selection = { kind: "off" };
+const track = (id: string): Selection => ({ kind: "track", id });
 
 export class MusicPlayer {
   private audio: HTMLAudioElement | null = null;
@@ -38,27 +41,28 @@ export class MusicPlayer {
   }
 
   private load(): Selection {
-    if (typeof localStorage === "undefined") return TRACKS[0].id;
+    if (typeof localStorage === "undefined") return track(TRACKS[0].id);
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved === "off") return "off";
-    if (saved && TRACKS.some((t) => t.id === saved)) return saved;
-    return TRACKS[0].id; // default: first track on
+    if (saved === "off") return OFF;
+    if (saved && TRACKS.some((t) => t.id === saved)) return track(saved);
+    return track(TRACKS[0].id); // default: first track on
   }
 
   private save() {
     if (typeof localStorage !== "undefined")
-      localStorage.setItem(STORAGE_KEY, this.selection);
+      localStorage.setItem(STORAGE_KEY, this.selection.kind === "off" ? "off" : this.selection.id);
   }
 
-  /** Current selection ("off" or a track id). */
+  /** Current selection. */
   get current(): Selection {
     return this.selection;
   }
 
   /** Short label for the menu chip ("Off" or the track label). */
   get label(): string {
-    if (this.selection === "off") return "Off";
-    return TRACKS.find((t) => t.id === this.selection)?.label ?? "Off";
+    const sel = this.selection;
+    if (sel.kind === "off") return "Off";
+    return TRACKS.find((t) => t.id === sel.id)?.label ?? "Off";
   }
 
   /**
@@ -68,17 +72,18 @@ export class MusicPlayer {
   unlock() {
     if (this.unlocked) return;
     this.unlocked = true;
-    if (this.selection !== "off") this.play(this.selection);
+    if (this.selection.kind === "track") this.play(this.selection.id);
   }
 
   /** Advance to the next selection: off → track0 → … → trackN → off. */
   cycle() {
-    const order: Selection[] = [...TRACKS.map((t) => t.id), "off"];
-    const i = order.indexOf(this.selection);
+    const order: Selection[] = [...TRACKS.map((t) => track(t.id)), OFF];
+    const idOf = (s: Selection) => (s.kind === "off" ? "off" : s.id);
+    const i = order.findIndex((s) => idOf(s) === idOf(this.selection));
     this.selection = order[(i + 1) % order.length];
     this.save();
-    if (this.selection === "off") this.stop();
-    else if (this.unlocked) this.play(this.selection);
+    if (this.selection.kind === "off") this.stop();
+    else if (this.unlocked) this.play(this.selection.id);
   }
 
   private play(id: string) {

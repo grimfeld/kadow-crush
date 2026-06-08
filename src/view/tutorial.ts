@@ -15,25 +15,12 @@ const BASICS = [
   "Line up 3 or more of the same candy in a row or column to pop them!",
 ];
 
-interface Rect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 export class TutorialScreen {
-  private playRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
-  private backRect: Rect = { x: 0, y: 0, w: 0, h: 0 };
-
   constructor(private k: KAPLAYCtx) {}
 
-  /** What the given point hits, if anything. */
-  hit(px: number, py: number): "play" | "back" | null {
-    if (inside(this.playRect, px, py)) return "play";
-    if (inside(this.backRect, px, py)) return "back";
-    return null;
-  }
+  // No hit-testing: a tap anywhere dismisses the tutorial (handled by the input
+  // layer's dismissTutorial intent). The Back/Play buttons below are drawn as
+  // affordances, but every tap closes the screen — so they need no hit rects.
 
   draw(cfg: ChallengeConfig) {
     const k = this.k;
@@ -56,17 +43,17 @@ export class TutorialScreen {
     const sideX = W * 0.07;
     const contentW = W - sideX * 2;
 
-    // --- Back button (top-left) ---
-    this.backRect = { x: 0, y: 0, w: W * 0.32, h: Math.max(48, H * 0.08) };
+    // --- Back affordance (top-left) ---
+    const backH = Math.max(48, H * 0.08);
     k.drawText({
       text: "‹ Back",
-      pos: k.vec2(sideX, this.backRect.h / 2),
+      pos: k.vec2(sideX, backH / 2),
       size: Math.min(20, W * 0.05),
       color: dark,
       anchor: "left",
     });
 
-    let y = this.backRect.h + H * 0.01;
+    let y = backH + H * 0.01;
 
     // --- Title + goal summary ---
     const spec = cfg.objective;
@@ -103,12 +90,11 @@ export class TutorialScreen {
     for (const line of cfg.tutorial ?? [])
       y = this.bullet(k, line, sideX, y, contentW, bodySize, dark, lineGap);
 
-    // --- Play button (bottom) ---
+    // --- Play affordance (bottom) ---
     const bw = Math.min(280, W * 0.7);
     const bh = Math.max(54, H * 0.085);
     const bx = (W - bw) / 2;
     const by = H - bh - H * 0.04;
-    this.playRect = { x: bx, y: by, w: bw, h: bh };
     k.drawRect({
       pos: k.vec2(bx, by),
       width: bw,
@@ -161,6 +147,3 @@ export class TutorialScreen {
     return y + fmt.height + gap;
   }
 }
-
-const inside = (r: Rect, px: number, py: number) =>
-  px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;

@@ -105,6 +105,7 @@ export class GameView {
     this.sprites.reset(this.game, this.layout); // snapshot the board at rest
     this.renderer.reset(this.game, this.layout);
     this.player.reset(this.game, this.layout);
+    this.hud.sync(this.layout, this.game.objective, this.music.label);
     this.mode = "play";
   }
 
@@ -176,6 +177,7 @@ export class GameView {
       case "music":
         playSound("swap");
         this.music.cycle();
+        this.hud.sync(this.layout, this.game.objective, this.music.label); // pill width follows the new label
         break;
       case "help":
         playSound("swap");
@@ -247,6 +249,7 @@ export class GameView {
     this.sprites.relayout(this.layout, !this.runner.busy);
     this.renderer.relayout(this.layout);
     this.player.relayout(this.layout);
+    this.hud.sync(this.layout, this.game.objective, this.music.label);
   }
 
   draw() {
@@ -269,7 +272,7 @@ export class GameView {
     // board region: panel, cell backgrounds, selection + hint glow, candies.
     this.renderer.draw(this.sprites, this.gestures.selected, this.hint);
 
-    this.hud.draw(this.layout, this.game.movesLeft, this.game.objective, this.music.label);
+    this.hud.draw(this.game.movesLeft, this.game.objective, this.music.label);
 
     // Transient effects (special-clear beams, cascade words, fruit flying to the
     // goal) over the board + HUD, but under the end overlay.

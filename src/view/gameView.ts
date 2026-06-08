@@ -16,6 +16,8 @@ import { TutorialScreen } from "./tutorial.ts";
 import { Hud } from "./hud.ts";
 import { EndSequence } from "./endSequence.ts";
 import { ResolutionPlayer } from "./resolutionPlayer.ts";
+import { SpriteModel } from "./spriteModel.ts";
+import { BoardRenderer } from "./boardRenderer.ts";
 import { GestureController, type InputContext, type Intent, type Point } from "./input.ts";
 import { Effects } from "./effects.ts";
 import { BG_BOTTOM, BG_TOP } from "./theme.ts";
@@ -30,6 +32,8 @@ export class GameView {
   private game!: Game; // defined once a game starts
   private layout!: Layout; // defined once a game starts
   private hud: Hud;
+  private sprites = new SpriteModel();
+  private renderer: BoardRenderer;
   private player: ResolutionPlayer;
   private busy = false; // input lock during Resolution
   private gestures = new GestureController();
@@ -48,7 +52,8 @@ export class GameView {
     this.particles = new Particles(k);
     this.effects = new Effects(k);
     this.endSeq = new EndSequence(k, this.particles);
-    this.player = new ResolutionPlayer(k, this.effects, this.particles, this.hud);
+    this.renderer = new BoardRenderer(k);
+    this.player = new ResolutionPlayer(k, this.sprites, this.effects, this.particles, this.hud);
     this.bind();
     // advance particles + effects every frame
     k.onUpdate(() => {
@@ -95,6 +100,8 @@ export class GameView {
     this.gestures.reset();
     this.busy = false;
     this.endSeq.reset();
+    this.sprites.reset(this.game, this.layout); // snapshot the board at rest
+    this.renderer.reset(this.game, this.layout);
     this.player.reset(this.game, this.layout);
     this.mode = "play";
   }
@@ -244,7 +251,9 @@ export class GameView {
     );
     // recompute rest positions for the new layout; mid-Resolution we only re-snap
     // (rebuilding would discard the in-flight sprites).
-    this.player.relayout(this.layout, !this.busy);
+    this.sprites.relayout(this.layout, !this.busy);
+    this.renderer.relayout(this.layout);
+    this.player.relayout(this.layout);
   }
 
   draw() {
@@ -265,7 +274,7 @@ export class GameView {
     });
 
     // board region: panel, cell backgrounds, selection + hint glow, candies.
-    this.player.drawBoard(this.gestures.selected, this.hint);
+    this.renderer.draw(this.sprites, this.gestures.selected, this.hint);
 
     this.hud.draw(this.layout, this.game.movesLeft, this.game.objective, this.music.label);
 

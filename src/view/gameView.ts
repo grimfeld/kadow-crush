@@ -19,6 +19,7 @@ import { ResolutionPlayer } from "./resolutionPlayer.ts";
 import { SpriteModel } from "./spriteModel.ts";
 import { BoardRenderer } from "./boardRenderer.ts";
 import { GestureController, type InputContext, type Intent, type Point } from "./input.ts";
+import { backOut } from "./anim.ts";
 import { Effects } from "./effects.ts";
 import { BG_BOTTOM, BG_TOP } from "./theme.ts";
 import { playSound } from "./sound.ts";
@@ -287,7 +288,7 @@ export class GameView {
       const won = outcome === "won";
       const ramp = this.endSeq.overlayRamp();
       // Win modal pops in with a slight overshoot; lose modal just appears.
-      this.hud.drawOverlay(won, won ? popEase(ramp) : 1, ramp);
+      this.hud.drawOverlay(won, won ? backOut(ramp) : 1, ramp);
     }
 
     // Particles last so clear-bursts and the win confetti shower render on top.
@@ -295,12 +296,3 @@ export class GameView {
   }
 
 }
-
-// Back-out overshoot — overshoots past 1 then settles, for a springy pop-in.
-const popEase = (t: number) => {
-  if (t <= 0) return 0;
-  if (t >= 1) return 1;
-  const c1 = 1.70158;
-  const c3 = c1 + 1;
-  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
-};

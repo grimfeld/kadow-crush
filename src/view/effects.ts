@@ -4,6 +4,7 @@
 // matching the rest of the view. No game state lives here.
 
 import type { KAPLAYCtx } from "kaplay";
+import { easeOutCubic } from "./anim.ts";
 
 interface FloatingWord {
   text: string;
@@ -49,7 +50,6 @@ interface Beam {
 // How many sample segments make up each travelling wave (more = smoother sine).
 const WAVE_SEGMENTS = 14;
 
-const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
 export class Effects {
   private words: FloatingWord[] = [];
@@ -115,7 +115,7 @@ export class Effects {
 
     for (const f of this.flyers) {
       f.life -= dt;
-      const t = easeOut(1 - Math.max(0, f.life) / f.maxLife);
+      const t = easeOutCubic(1 - Math.max(0, f.life) / f.maxLife);
       f.x = f.sx + (f.tx - f.sx) * t;
       // arc upward then into the target
       const arc = Math.sin(t * Math.PI) * 40;
@@ -210,7 +210,7 @@ export class Effects {
     // praise words (pop in, rise, fade)
     for (const w of this.words) {
       const a = w.life / w.maxLife;
-      const pop = a > 0.8 ? easeOut((1 - a) / 0.2) : 1; // quick scale-in
+      const pop = a > 0.8 ? easeOutCubic((1 - a) / 0.2) : 1; // quick scale-in
       k.drawText({
         text: w.text,
         pos: k.vec2(w.x, w.y),

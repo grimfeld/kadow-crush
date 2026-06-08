@@ -17,6 +17,7 @@ import { Effects } from "./effects.ts";
 import { Particles } from "./particles.ts";
 import { Hud } from "./hud.ts";
 import { SpriteModel } from "./spriteModel.ts";
+import { lerp, makeTweener, type Tweener } from "./anim.ts";
 import { playSound } from "./sound.ts";
 import { BURST_COLOURS, COLOUR_THEMES, FX_TINT } from "./theme.ts";
 
@@ -27,13 +28,12 @@ const FALL_MS = 280;
 const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
 
-const ease = (t: number) => 1 - Math.pow(1 - t, 3);
-
 export class ResolutionPlayer {
   // Cascade depth within the current Resolution, for escalating praise words.
   private cascadeDepth = 0;
   // Set when the active game is replaced mid-Resolution, so playback bails out.
   private aborted = false;
+  private anim: Tweener;
 
   private game!: Game;
   private layout!: Layout;
@@ -44,7 +44,9 @@ export class ResolutionPlayer {
     private effects: Effects,
     private particles: Particles,
     private hud: Hud,
-  ) {}
+  ) {
+    this.anim = makeTweener(k);
+  }
 
   private get rows() {
     return this.game.board.rows;
@@ -68,22 +70,7 @@ export class ResolutionPlayer {
     this.layout = layout;
   }
 
-  // ---- animation primitives ----------------------------------------------
-
-  private tween(setter: (t: number) => void, ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      let elapsed = 0;
-      const ev = this.k.onUpdate(() => {
-        elapsed += this.k.dt() * 1000;
-        const t = Math.min(1, elapsed / ms);
-        setter(ease(t));
-        if (t >= 1) {
-          ev.cancel();
-          resolve();
-        }
-      });
-    });
-  }
+  // ---- animation primitives (tween/wait shared via anim.ts) ---------------
 
   private async moveSprite(id: number, to: Pos, ms: number) {
     const s = this.model.get(id);
@@ -91,23 +78,10 @@ export class ResolutionPlayer {
     const { x, y } = cellCenter(this.layout, to.row, to.col);
     const sx = s.x,
       sy = s.y;
-    await this.tween((t) => {
-      s.x = sx + (x - sx) * t;
-      s.y = sy + (y - sy) * t;
+    await this.anim.tween((t) => {
+      s.x = lerp(sx, x, t);
+      s.y = lerp(sy, y, t);
     }, ms);
-  }
-
-  private wait(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      let elapsed = 0;
-      const ev = this.k.onUpdate(() => {
-        elapsed += this.k.dt() * 1000;
-        if (elapsed >= ms) {
-          ev.cancel();
-          resolve();
-        }
-      });
-    });
   }
 
   // ---- step playback ------------------------------------------------------
@@ -122,11 +96,11 @@ export class ResolutionPlayer {
       // Pace the cascade: pause after a clear so the gap is visible, and after
       // a spawn (end of one cascade round) before the next round begins.
       if (step.kind === "clear" || step.kind === "special-activate")
-        await this.wait(AFTER_CLEAR_MS);
+        await this.anim.wait(AFTER_CLEAR_MS);
       else if (step.kind === "spawn") {
         this.cascadeDepth++;
         if (this.cascadeDepth >= 2) this.praiseCascade(this.cascadeDepth);
-        await this.wait(AFTER_ROUND_MS);
+        await this.anim.wait(AFTER_ROUND_MS);
       }
     }
     // Final correction: align sprites to the view's own grid. By now viewGrid
@@ -221,7 +195,7 @@ export class ResolutionPlayer {
     // clear them from the view grid immediately so nothing else targets them
     cells.forEach((p) => this.model.setAt(p, null));
     // Pop: grow briefly (t<0.35) then shrink to nothing.
-    await this.tween((t) => {
+    await this.anim.tween((t) => {
       const scale = t < 0.35 ? 1 + (t / 0.35) * 0.35 : (1.35 * (1 - t)) / 0.65;
       for (const id of ids) {
         const s = this.model.get(id);
@@ -240,7 +214,7 @@ export class ResolutionPlayer {
     const idB = this.model.idAt(b);
     const ca = cellCenter(this.layout, a.row, a.col);
     const cb = cellCenter(this.layout, b.row, b.col);
-    await this.tween((t) => {
+    await this.anim.tween((t) => {
       const k = Math.sin(t * Math.PI) * 0.35;
       const sa = idA != null ? this.model.get(idA) : null;
       const sb = idB != null ? this.model.get(idB) : null;
@@ -258,7 +232,7 @@ export class ResolutionPlayer {
   private async pulse(id: number) {
     const s = this.model.get(id);
     if (!s) return;
-    await this.tween((t) => {
+    await this.anim.tween((t) => {
       s.scale = 1 + Math.sin(t * Math.PI) * 0.25;
     }, CLEAR_MS);
     s.scale = 1;

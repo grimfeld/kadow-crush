@@ -106,6 +106,11 @@ repeating until the Board is stable.
 The full chain triggered by one legal Swap: clear Matches → create Specials →
 Cascade → repeat until stable.
 
+> While a Resolution animates, the view locks input; if the Move leaves the Board
+> deadlocked (no legal Swap), the view Reshuffles before unlocking. In code this
+> lifecycle — lock → play the Steps → Reshuffle-if-stuck → unlock — is the
+> **MoveRunner**.
+
 ### Move
 One legal Swap and its full Resolution. The game grants a fixed number of Moves.
 Cascades spawned by a Move do not cost additional Moves.

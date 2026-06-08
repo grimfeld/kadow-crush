@@ -10,13 +10,14 @@ import type { KAPLAYCtx } from "kaplay";
 import { DEFAULT_CHALLENGE } from "../core/config.ts";
 import { Game } from "../core/game.ts";
 import { entropySeed } from "../core/rng.ts";
-import type { Pos, Step } from "../core/types.ts";
+import type { Pos } from "../core/types.ts";
 import { computeLayout, type Layout } from "./layout.ts";
 import { MusicPlayer } from "./music.ts";
 import { TutorialScreen } from "./tutorial.ts";
 import { Hud } from "./hud.ts";
 import { EndSequence } from "./endSequence.ts";
 import { ResolutionPlayer } from "./resolutionPlayer.ts";
+import { MoveRunner } from "./moveRunner.ts";
 import { SpriteModel } from "./spriteModel.ts";
 import { BoardRenderer } from "./boardRenderer.ts";
 import { GestureController, type InputContext, type Intent, type Point } from "./input.ts";
@@ -37,7 +38,7 @@ export class GameView {
   private sprites = new SpriteModel();
   private renderer: BoardRenderer;
   private player: ResolutionPlayer;
-  private busy = false; // input lock during Resolution
+  private runner!: MoveRunner; // owns the Resolution lifecycle + the input lock
   private gestures = new GestureController();
   private particles: Particles;
   private effects: Effects;
@@ -96,7 +97,10 @@ export class GameView {
       this.game.board.cols,
     );
     this.gestures.reset();
-    this.busy = false;
+    // The MoveRunner owns the input lock; create it on first start, rebind after
+    // (a Replay mid-Resolution aborts the in-flight run via the player + reset).
+    if (this.runner) this.runner.reset(this.game);
+    else this.runner = new MoveRunner(this.game, this.player);
     this.endSeq.reset();
     this.sprites.reset(this.game, this.layout); // snapshot the board at rest
     this.renderer.reset(this.game, this.layout);
@@ -125,9 +129,9 @@ export class GameView {
   private inputContext(): InputContext {
     return {
       mode: this.mode,
-      busy: this.busy,
+      busy: this.runner.busy,
       playing: this.game.outcome() === "playing",
-      overlayReplayable: !this.busy && this.endSeq.showOverlay(),
+      overlayReplayable: !this.runner.busy && this.endSeq.showOverlay(),
       cellAt: (p) => this.cellAt(p),
       isSpecial: (p) => this.game.board.grid[p.row]?.[p.col]?.special != null,
       inBounds: (p) => this.inBounds(p),
@@ -146,7 +150,7 @@ export class GameView {
       const p = k.mousePos();
       const ctx = this.inputContext();
       // Any board touch during play defers the idle hint.
-      if (this.mode === "play" && ctx.playing && !this.busy && this.cellAt(p)) {
+      if (this.mode === "play" && ctx.playing && !this.runner.busy && this.cellAt(p)) {
         this.idle = 0;
         this.hint = null;
       }
@@ -164,10 +168,10 @@ export class GameView {
     if (!intent) return;
     switch (intent.kind) {
       case "swap":
-        void this.requestSwap(intent.a, intent.b);
+        this.requestSwap(intent.a, intent.b);
         break;
       case "activate":
-        void this.requestActivate(intent.at);
+        this.requestActivate(intent.at);
         break;
       case "music":
         playSound("swap");
@@ -188,30 +192,21 @@ export class GameView {
     }
   }
 
-  private async requestSwap(a: Pos, b: Pos) {
-    await this.runMove(() => this.game.playMove(a, b));
+  private requestSwap(a: Pos, b: Pos) {
+    this.clearHint();
+    void this.runner.run(() => this.game.playMove(a, b));
   }
 
   /** Fire the Special the player double-tapped, then resolve like a Move. */
-  private async requestActivate(at: Pos) {
-    await this.runMove(() => this.game.activateSpecial(at));
+  private requestActivate(at: Pos) {
+    this.clearHint();
+    void this.runner.run(() => this.game.activateSpecial(at));
   }
 
-  /** Shared Move flow: lock input, play the resulting Steps, reshuffle if the
-   *  board deadlocks, unlock. `move` is the core call (swap or tap-activate). */
-  private async runMove(move: () => { steps: Step[]; consumedMove: boolean }) {
-    this.busy = true;
+  /** A Move starts — drop the idle-hint timer (a view-presentation concern). */
+  private clearHint() {
     this.idle = 0;
     this.hint = null;
-    const { steps } = move();
-    await this.player.playSteps(steps);
-    if (this.player.isAborted) return; // game replaced; the old one is discarded
-    // reshuffle if the resulting board is deadlocked
-    if (this.game.outcome() === "playing") {
-      const rs = this.game.reshuffleIfStuck();
-      if (rs) await this.player.playStep(rs);
-    }
-    this.busy = false;
   }
 
   // ---- frame --------------------------------------------------------------
@@ -222,7 +217,7 @@ export class GameView {
 
     // Idle hint: while the board is at rest and playable, count up; after the
     // delay, surface a legal swap to nudge the player. Any action resets it.
-    if (!this.busy && this.game.outcome() === "playing") {
+    if (!this.runner.busy && this.game.outcome() === "playing") {
       this.idle += dtSeconds;
       if (this.idle >= HINT_DELAY && !this.hint) {
         this.hint = this.game.board.findHint();
@@ -233,7 +228,7 @@ export class GameView {
     }
     // Once the outcome is decided and the last Resolution has finished
     // animating, run the end-of-game sequence (linger → overlay, win confetti).
-    if (this.game.outcome() !== "playing" && !this.busy) {
+    if (this.game.outcome() !== "playing" && !this.runner.busy) {
       if (!this.endSeq.hasBegun) this.endSeq.begin(this.game.outcome() === "won");
       this.endSeq.advance(dtSeconds);
     }
@@ -249,7 +244,7 @@ export class GameView {
     );
     // recompute rest positions for the new layout; mid-Resolution we only re-snap
     // (rebuilding would discard the in-flight sprites).
-    this.sprites.relayout(this.layout, !this.busy);
+    this.sprites.relayout(this.layout, !this.runner.busy);
     this.renderer.relayout(this.layout);
     this.player.relayout(this.layout);
   }
@@ -281,7 +276,7 @@ export class GameView {
     this.effects.draw();
 
     const outcome = this.game.outcome();
-    if (outcome !== "playing" && !this.busy && this.endSeq.showOverlay()) {
+    if (outcome !== "playing" && !this.runner.busy && this.endSeq.showOverlay()) {
       const won = outcome === "won";
       const ramp = this.endSeq.overlayRamp();
       // Win modal pops in with a slight overshoot; lose modal just appears.

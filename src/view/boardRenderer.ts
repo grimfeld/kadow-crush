@@ -13,6 +13,20 @@ import { drawCandy, drawCellBg } from "./render.ts";
 import { SpriteModel } from "./spriteModel.ts";
 import { GRID_PANEL, GRID_PANEL_BORDER, TEXT_ACCENT } from "./theme.ts";
 
+// Board-region geometry/look, all as fractions of a Cell unless noted. Named so
+// the board's appearance is tweakable in one place rather than as inline literals.
+const PANEL_PAD = 0.22; // gap between the grid and the panel edge
+const PANEL_RADIUS = 0.3; // corner radius of the panel + per-Cell shaped tiles
+const PANEL_OPACITY = 0.55;
+const PANEL_OUTLINE_W = 4; // px
+const TILE_RADIUS = 0.18; // selection / hint highlight corner radius
+const SELECT_OPACITY = 0.4;
+const HIGHLIGHT_OUTLINE_W = 3; // px (selection + hint rings)
+const HINT_PULSE_HZ = 6; // glow/bounce oscillation speed
+const HINT_BOUNCE = 0.12; // how far a hinted tile lifts
+const HINT_OPACITY = 0.5; // scales the pulsing glow
+const HINT_GLOW: [number, number, number] = [255, 245, 200];
+
 export class BoardRenderer {
   private game!: Game;
   private layout!: Layout;
@@ -54,7 +68,8 @@ export class BoardRenderer {
     // one rounded rect over the whole bbox; for a shaped board (with Voids) a
     // single bbox rect would cover the void corners, so we back each playable
     // Cell with a slightly-larger rounded tile instead. (ADR-0006)
-    const pad = this.layout.cell * 0.22;
+    const pad = this.layout.cell * PANEL_PAD;
+    const panelRadius = this.layout.cell * PANEL_RADIUS;
     if (this.boardHasVoids()) {
       const tile = this.layout.cell + pad; // overlap so neighbours merge
       for (let r = 0; r < this.rows; r++)
@@ -65,9 +80,9 @@ export class BoardRenderer {
             pos: k.vec2(x - tile / 2, y - tile / 2),
             width: tile,
             height: tile,
-            radius: this.layout.cell * 0.3,
+            radius: panelRadius,
             color: k.rgb(GRID_PANEL[0], GRID_PANEL[1], GRID_PANEL[2]),
-            opacity: 0.55,
+            opacity: PANEL_OPACITY,
           });
         }
     } else {
@@ -75,11 +90,11 @@ export class BoardRenderer {
         pos: k.vec2(this.layout.originX - pad, this.layout.originY - pad),
         width: this.layout.boardW + pad * 2,
         height: this.layout.boardH + pad * 2,
-        radius: this.layout.cell * 0.3,
+        radius: panelRadius,
         color: k.rgb(GRID_PANEL[0], GRID_PANEL[1], GRID_PANEL[2]),
-        opacity: 0.55,
+        opacity: PANEL_OPACITY,
         outline: {
-          width: 4,
+          width: PANEL_OUTLINE_W,
           color: k.rgb(GRID_PANEL_BORDER[0], GRID_PANEL_BORDER[1], GRID_PANEL_BORDER[2]),
         },
       });
@@ -101,18 +116,18 @@ export class BoardRenderer {
         pos: k.vec2(x - cell / 2, y - cell / 2),
         width: cell,
         height: cell,
-        radius: cell * 0.18,
+        radius: cell * TILE_RADIUS,
         color: k.rgb(255, 255, 255),
-        opacity: 0.4,
-        outline: { width: 3, color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]) },
+        opacity: SELECT_OPACITY,
+        outline: { width: HIGHLIGHT_OUTLINE_W, color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]) },
       });
     }
 
     // idle hint: a pulsing glow ring under the two suggested tiles
     let hintBounce = 0;
     if (hint) {
-      const phase = k.time() * 6;
-      hintBounce = Math.max(0, Math.sin(phase)) * cell * 0.12;
+      const phase = k.time() * HINT_PULSE_HZ;
+      hintBounce = Math.max(0, Math.sin(phase)) * cell * HINT_BOUNCE;
       const glow = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(phase));
       for (const p of hint) {
         if (board.isVoid(p.row, p.col)) continue;
@@ -121,10 +136,10 @@ export class BoardRenderer {
           pos: k.vec2(x - cell / 2, y - cell / 2),
           width: cell,
           height: cell,
-          radius: cell * 0.18,
-          color: k.rgb(255, 245, 200),
-          opacity: glow * 0.5,
-          outline: { width: 3, color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]) },
+          radius: cell * TILE_RADIUS,
+          color: k.rgb(HINT_GLOW[0], HINT_GLOW[1], HINT_GLOW[2]),
+          opacity: glow * HINT_OPACITY,
+          outline: { width: HIGHLIGHT_OUTLINE_W, color: k.rgb(TEXT_ACCENT[0], TEXT_ACCENT[1], TEXT_ACCENT[2]) },
         });
       }
     }

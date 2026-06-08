@@ -50,6 +50,15 @@ interface Beam {
 // How many sample segments make up each travelling wave (more = smoother sine).
 const WAVE_SEGMENTS = 14;
 
+// Effect lifetimes in seconds (how long each transient lives before it expires).
+const WORD_LIFE = 1.0;
+const FLY_LIFE = 0.55;
+const WAVE_LIFE = 0.45;
+const FLASH_LIFE = 0.36;
+const WORD_DEFAULT_SIZE = 34;
+const WORD_RISE = 40; // px/sec a praise word drifts upward
+const FLY_ARC = 40; // px peak of a flyer's upward arc
+const FLASH_EXPAND = 1.1; // how far past its nominal radius a flash grows
 
 export class Effects {
   private words: FloatingWord[] = [];
@@ -59,8 +68,8 @@ export class Effects {
   constructor(private k: KAPLAYCtx) {}
 
   /** Pop a praise word that rises and fades at (x,y). */
-  word(text: string, x: number, y: number, color: [number, number, number], size = 34) {
-    this.words.push({ text, x, y, life: 1.0, maxLife: 1.0, color, size });
+  word(text: string, x: number, y: number, color: [number, number, number], size = WORD_DEFAULT_SIZE) {
+    this.words.push({ text, x, y, life: WORD_LIFE, maxLife: WORD_LIFE, color, size });
   }
 
   /** Launch an emoji that arcs from (sx,sy) to (tx,ty), calling onArrive there. */
@@ -81,8 +90,8 @@ export class Effects {
       sy,
       tx,
       ty,
-      life: 0.55,
-      maxLife: 0.55,
+      life: FLY_LIFE,
+      maxLife: FLY_LIFE,
       size,
       onArrive,
     });
@@ -93,23 +102,23 @@ export class Effects {
    * (lo..hi = board's left/right edge x), fixed on row y = oy.
    */
   rowWave(ox: number, oy: number, lo: number, hi: number, thick: number, color: [number, number, number]) {
-    this.beams.push({ kind: "row", ox, oy, lo, hi, thick, life: 0.45, maxLife: 0.45, color });
+    this.beams.push({ kind: "row", ox, oy, lo, hi, thick, life: WAVE_LIFE, maxLife: WAVE_LIFE, color });
   }
 
   /** A wave rippling outward along a column from oy to top/bottom edge. */
   colWave(ox: number, oy: number, lo: number, hi: number, thick: number, color: [number, number, number]) {
-    this.beams.push({ kind: "col", ox, oy, lo, hi, thick, life: 0.45, maxLife: 0.45, color });
+    this.beams.push({ kind: "col", ox, oy, lo, hi, thick, life: WAVE_LIFE, maxLife: WAVE_LIFE, color });
   }
 
   /** A radial flash for a color-bomb. */
   flash(cx: number, cy: number, radius: number, color: [number, number, number]) {
-    this.beams.push({ kind: "flash", ox: cx, oy: cy, lo: 0, hi: radius, thick: radius, life: 0.36, maxLife: 0.36, color });
+    this.beams.push({ kind: "flash", ox: cx, oy: cy, lo: 0, hi: radius, thick: radius, life: FLASH_LIFE, maxLife: FLASH_LIFE, color });
   }
 
   update(dt: number) {
     for (const w of this.words) {
       w.life -= dt;
-      w.y -= 40 * dt; // rise
+      w.y -= WORD_RISE * dt; // rise
     }
     this.words = this.words.filter((w) => w.life > 0);
 
@@ -118,7 +127,7 @@ export class Effects {
       const t = easeOutCubic(1 - Math.max(0, f.life) / f.maxLife);
       f.x = f.sx + (f.tx - f.sx) * t;
       // arc upward then into the target
-      const arc = Math.sin(t * Math.PI) * 40;
+      const arc = Math.sin(t * Math.PI) * FLY_ARC;
       f.y = f.sy + (f.ty - f.sy) * t - arc;
       if (f.life <= 0 && !f.arrived) {
         f.arrived = true;
@@ -139,7 +148,7 @@ export class Effects {
       const a = Math.max(0, b.life / b.maxLife);
       const col = k.rgb(b.color[0], b.color[1], b.color[2]);
       if (b.kind === "flash") {
-        const radius = b.hi * (1 - a) * 1.1; // expand outward
+        const radius = b.hi * (1 - a) * FLASH_EXPAND; // expand outward
         k.drawCircle({
           pos: k.vec2(b.ox, b.oy),
           radius,

@@ -28,6 +28,24 @@ const FALL_MS = 280;
 const AFTER_CLEAR_MS = 140; // hold on the emptied cells before they refill
 const AFTER_ROUND_MS = 110; // settle pause before the next cascade round
 
+// --- animation amplitudes / juice tuning ---
+const POP_GROW_AT = 0.35; // t at which a clearing tile stops growing, starts shrinking
+const POP_GROW_BY = 0.35; // peak extra scale at the top of the pop
+const NUDGE_AMOUNT = 0.35; // how far an illegal-swap bounce travels (fraction of the gap)
+const PULSE_BY = 0.25; // special-create breathing amplitude
+const MAX_FLYERS = 6; // cap on fruit flying to the goal per clear (perf)
+const FLY_SIZE = 0.55; // flyer emoji size (× cell)
+const WAVE_THICK = 0.8; // striped wave cross-axis thickness (× cell)
+const FLASH_SCALE = 1.5; // flash pixel radius = radiusCells × cell × this
+const WRAPPED_BURST: [number, number, number] = [255, 170, 90];
+const WRAPPED_BURST_N = 6; // particles per cleared cell in a wrapped blast
+// praise word placement
+const PRAISE_Y_FRAC = 0.32; // baseline height down the board
+const PRAISE_Y_RISE = 12; // px higher per cascade rung (so stacks don't overlap)
+const PRAISE_MAX_SIZE = 56;
+const PRAISE_SIZE_BASE = 1.1; // × cell, plus PRAISE_SIZE_PER_DEPTH per rung
+const PRAISE_SIZE_PER_DEPTH = 0.1;
+
 export class ResolutionPlayer {
   // Cascade depth within the current Resolution, for escalating praise words.
   private cascadeDepth = 0;
@@ -196,7 +214,10 @@ export class ResolutionPlayer {
     cells.forEach((p) => this.model.setAt(p, null));
     // Pop: grow briefly (t<0.35) then shrink to nothing.
     await this.anim.tween((t) => {
-      const scale = t < 0.35 ? 1 + (t / 0.35) * 0.35 : (1.35 * (1 - t)) / 0.65;
+      const scale =
+        t < POP_GROW_AT
+          ? 1 + (t / POP_GROW_AT) * POP_GROW_BY
+          : ((1 + POP_GROW_BY) * (1 - t)) / (1 - POP_GROW_AT);
       for (const id of ids) {
         const s = this.model.get(id);
         if (s) s.scale = Math.max(0, scale);
@@ -215,7 +236,7 @@ export class ResolutionPlayer {
     const ca = cellCenter(this.layout, a.row, a.col);
     const cb = cellCenter(this.layout, b.row, b.col);
     await this.anim.tween((t) => {
-      const k = Math.sin(t * Math.PI) * 0.35;
+      const k = Math.sin(t * Math.PI) * NUDGE_AMOUNT;
       const sa = idA != null ? this.model.get(idA) : null;
       const sb = idB != null ? this.model.get(idB) : null;
       if (sa) {
@@ -233,7 +254,7 @@ export class ResolutionPlayer {
     const s = this.model.get(id);
     if (!s) return;
     await this.anim.tween((t) => {
-      s.scale = 1 + Math.sin(t * Math.PI) * 0.25;
+      s.scale = 1 + Math.sin(t * Math.PI) * PULSE_BY;
     }, CLEAR_MS);
     s.scale = 1;
   }
@@ -247,7 +268,7 @@ export class ResolutionPlayer {
   private flyCollectedToGoal(ids: number[]) {
     const targets = new Set(this.game.objective.targets);
     let launched = 0;
-    for (let i = 0; i < ids.length && launched < 6; i++) {
+    for (let i = 0; i < ids.length && launched < MAX_FLYERS; i++) {
       const s = this.model.get(ids[i]);
       if (!s || s.colour === null || !targets.has(s.colour)) continue;
       const dest = this.hud.chipPos(s.colour);
@@ -259,7 +280,7 @@ export class ResolutionPlayer {
         s.y,
         dest.x,
         dest.y,
-        this.layout.cell * 0.55,
+        this.layout.cell * FLY_SIZE,
         () => this.hud.bumpChip(colour),
       );
       launched++;
@@ -288,17 +309,17 @@ export class ResolutionPlayer {
 
     if (fx.kind === "wave") {
       if (fx.axis === "row" || fx.axis === "cross")
-        this.effects.rowWave(ox, oy, L, R, cell * 0.8, tint);
+        this.effects.rowWave(ox, oy, L, R, cell * WAVE_THICK, tint);
       if (fx.axis === "col" || fx.axis === "cross")
-        this.effects.colWave(ox, oy, T, B, cell * 0.8, tint);
+        this.effects.colWave(ox, oy, T, B, cell * WAVE_THICK, tint);
       playSound("striped");
     } else {
       // flash: radius named by the core in Cells → pixels via the layout.
-      this.effects.flash(ox, oy, cell * fx.radiusCells * 1.5, tint);
+      this.effects.flash(ox, oy, cell * fx.radiusCells * FLASH_SCALE, tint);
       if (special.kind === "wrapped") {
         for (const p of cleared) {
           const { x, y } = cellCenter(this.layout, p.row, p.col);
-          this.particles.burst(x, y, [255, 170, 90], 6);
+          this.particles.burst(x, y, WRAPPED_BURST, WRAPPED_BURST_N);
         }
         playSound("wrapped");
       } else {
@@ -333,8 +354,11 @@ export class ResolutionPlayer {
     const colour = colours[Math.floor(this.k.rand(0, colours.length))];
     const x = this.layout.originX + this.layout.boardW / 2;
     // place it a little higher for each deeper rung so stacked combos don't overlap
-    const y = this.layout.originY + this.layout.boardH * 0.32 - depth * 12;
-    const size = Math.min(56, this.layout.cell * (1.1 + depth * 0.1));
+    const y = this.layout.originY + this.layout.boardH * PRAISE_Y_FRAC - depth * PRAISE_Y_RISE;
+    const size = Math.min(
+      PRAISE_MAX_SIZE,
+      this.layout.cell * (PRAISE_SIZE_BASE + depth * PRAISE_SIZE_PER_DEPTH),
+    );
     this.effects.word(word, x, y, colour, size);
     playSound("special");
   }

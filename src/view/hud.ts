@@ -26,6 +26,17 @@ interface Rect {
 const hits = (r: Rect, px: number, py: number) =>
   px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
 
+const PANEL_OPACITY = 0.92; // shared by HUD panels + pills
+const PILL_MIN_H = 28; // px — pill height clamps to [MIN, MAX]
+const PILL_MAX_H = 40;
+const PILL_H_FRAC = 0.045; // × viewport height, before clamping
+const CHIP_BUMP_DECAY = 4; // per-second decay of a goal-chip bump
+const CHIP_BUMP_SCALE = 0.5; // how much a full bump enlarges the chip
+
+/** Pill (Music / "?" / Replay) height: a fraction of the viewport, clamped. */
+const pillHeight = (vh: number) =>
+  Math.max(PILL_MIN_H, Math.min(PILL_MAX_H, vh * PILL_H_FRAC));
+
 export class Hud {
   // Screen position of each goal chip, filled by draw() each frame so a cleared
   // fruit can fly to its chip. Keyed by Colour.
@@ -50,7 +61,7 @@ export class Hud {
   /** Decay any goal-chip bumps. Call once per frame. */
   advance(dt: number) {
     for (const [c, v] of this.chipBump) {
-      const nv = v - dt * 4;
+      const nv = v - dt * CHIP_BUMP_DECAY;
       if (nv <= 0) this.chipBump.delete(c);
       else this.chipBump.set(c, nv);
     }
@@ -89,7 +100,7 @@ export class Hud {
       height: h,
       radius: Math.min(w, h) * 0.28,
       color: k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
-      opacity: 0.92,
+      opacity: PANEL_OPACITY,
       outline: {
         width: 3,
         color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]),
@@ -100,7 +111,7 @@ export class Hud {
   /** A small round pill button in the top-left/right; returns its hit rect. */
   private drawPill(text: string, x: number, y: number): Rect {
     const k = this.k;
-    const bh = Math.max(28, Math.min(40, this.k.height() * 0.045));
+    const bh = pillHeight(this.k.height());
     const size = bh * 0.42;
     const m = k.formatText({ text, size, pos: k.vec2(0, 0) });
     const bw = m.width + bh * 0.9;
@@ -111,7 +122,7 @@ export class Hud {
       height: bh,
       radius: bh / 2,
       color: k.rgb(PANEL_FILL[0], PANEL_FILL[1], PANEL_FILL[2]),
-      opacity: 0.92,
+      opacity: PANEL_OPACITY,
       outline: { width: 2, color: k.rgb(PANEL_BORDER[0], PANEL_BORDER[1], PANEL_BORDER[2]) },
     });
     k.drawText({
@@ -141,7 +152,7 @@ export class Hud {
     // Top-row buttons: Music (left) and "?" tutorial (right).
     const topY = Math.max(6, this.k.height() * 0.012);
     this.musicRect = this.drawPill(`♪ ${musicLabel}`, Math.max(6, this.k.width() * 0.02), topY);
-    const helpW = Math.max(28, Math.min(40, this.k.height() * 0.045)) + 12;
+    const helpW = pillHeight(this.k.height()) + 12;
     this.helpRect = this.drawPill("?", this.k.width() - helpW - Math.max(6, this.k.width() * 0.02), topY);
 
     const panelTop = topY + this.musicRect.h + h * 0.04;
@@ -197,7 +208,7 @@ export class Hud {
       const emojiSize = Math.min(panelH * 0.36, slot * 0.5);
       const countSize = Math.min(panelH * 0.26, slot * 0.4);
       // a bump scale when a fruit just flew in
-      const bump = 1 + (this.chipBump.get(colour) ?? 0) * 0.5;
+      const bump = 1 + (this.chipBump.get(colour) ?? 0) * CHIP_BUMP_SCALE;
       const ex = wide ? cx - panelH * 0.18 : cx;
       const ey = wide ? cy : cy - panelH * 0.14;
       this.goalChipPos.set(colour, { x: ex, y: ey });

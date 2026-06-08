@@ -16,6 +16,7 @@ import { TutorialScreen } from "./tutorial.ts";
 import { Hud } from "./hud.ts";
 import { EndSequence } from "./endSequence.ts";
 import { ResolutionPlayer } from "./resolutionPlayer.ts";
+import { GestureController, type InputContext, type Intent, type Point } from "./input.ts";
 import { Effects } from "./effects.ts";
 import { BG_BOTTOM, BG_TOP } from "./theme.ts";
 import { playSound } from "./sound.ts";
@@ -31,8 +32,7 @@ export class GameView {
   private hud: Hud;
   private player: ResolutionPlayer;
   private busy = false; // input lock during Resolution
-  private selected: Pos | null = null;
-  private dragStart: { pos: Pos; px: number; py: number } | null = null;
+  private gestures = new GestureController();
   private particles: Particles;
   private effects: Effects;
   private music = new MusicPlayer();
@@ -92,8 +92,7 @@ export class GameView {
       this.game.board.rows,
       this.game.board.cols,
     );
-    this.selected = null;
-    this.dragStart = null;
+    this.gestures.reset();
     this.busy = false;
     this.endSeq.reset();
     this.player.reset(this.game, this.layout);
@@ -104,15 +103,33 @@ export class GameView {
     return p.row >= 0 && p.row < this.rows && p.col >= 0 && p.col < this.cols;
   }
 
-
   // ---- input --------------------------------------------------------------
+  // The gesture state machine lives in GestureController (pure, Kaplay-free).
+  // GameView only binds the real pointer events, exposes the board/HUD as an
+  // InputContext, and dispatches the Intent the controller resolves.
 
-  private cellAt(px: number, py: number): Pos | null {
-    const col = Math.floor((px - this.layout.originX) / this.layout.cell);
-    const row = Math.floor((py - this.layout.originY) / this.layout.cell);
+  private cellAt(p: Point): Pos | null {
+    const col = Math.floor((p.x - this.layout.originX) / this.layout.cell);
+    const row = Math.floor((p.y - this.layout.originY) / this.layout.cell);
     if (row < 0 || row >= this.rows || col < 0 || col >= this.cols) return null;
     if (this.game.board.isVoid(row, col)) return null; // Voids aren't tappable
     return { row, col };
+  }
+
+  /** The read surface the GestureController queries (all pure). */
+  private inputContext(): InputContext {
+    return {
+      mode: this.mode,
+      busy: this.busy,
+      playing: this.game.outcome() === "playing",
+      overlayReplayable: !this.busy && this.endSeq.showOverlay(),
+      cellAt: (p) => this.cellAt(p),
+      isSpecial: (p) => this.game.board.grid[p.row]?.[p.col]?.special != null,
+      inBounds: (p) => this.inBounds(p),
+      hitMusic: (p) => this.hud.musicHit(p.x, p.y),
+      hitHelp: (p) => this.hud.helpHit(p.x, p.y),
+      hitReplay: (p) => this.hud.replayHit(p.x, p.y),
+    };
   }
 
   private bind() {
@@ -122,87 +139,48 @@ export class GameView {
       // First gesture unlocks audio (autoplay policy); starts saved track.
       this.music.unlock();
       const p = k.mousePos();
-
-      if (this.mode === "tutorial") {
-        // any tap closes the how-to-play overlay and returns to the game
-        playSound("swap");
-        this.mode = "play";
-        return;
+      const ctx = this.inputContext();
+      // Any board touch during play defers the idle hint.
+      if (this.mode === "play" && ctx.playing && !this.busy && this.cellAt(p)) {
+        this.idle = 0;
+        this.hint = null;
       }
-
-      // Music toggle + "?" tutorial buttons work any time.
-      if (this.hud.musicHit(p.x, p.y)) {
-        playSound("swap");
-        this.music.cycle();
-        return;
-      }
-      if (this.hud.helpHit(p.x, p.y)) {
-        playSound("swap");
-        this.mode = "tutorial";
-        return;
-      }
-
-      // End-of-game overlay: tap Replay to start a fresh game.
-      if (this.game.outcome() !== "playing") {
-        if (!this.busy && this.endSeq.showOverlay() && this.hud.replayHit(p.x, p.y)) {
-          playSound("swap");
-          this.startGame();
-        }
-        return;
-      }
-      if (this.busy) return;
-
-      const cell = this.cellAt(p.x, p.y);
-      if (!cell) return;
-      this.idle = 0; // any board interaction defers the hint
-      this.hint = null;
-      this.dragStart = { pos: cell, px: p.x, py: p.y };
-
-      // tap-tap: a second tap resolves the selection.
-      if (this.selected) {
-        if (samePos(this.selected, cell) && this.specialAt(cell)) {
-          // double-tap on a Special fires it in place (no swap).
-          this.selected = null;
-          void this.requestActivate(cell);
-        } else if (adjacent(this.selected, cell)) {
-          const from = this.selected;
-          this.selected = null;
-          void this.requestSwap(from, cell);
-        } else {
-          this.selected = cell; // reselect (incl. a re-tap on a normal candy)
-        }
-      } else {
-        this.selected = cell;
-      }
+      this.dispatch(this.gestures.onPress(p, ctx));
     });
 
     k.onMouseRelease(() => {
-      if (this.mode !== "play") return;
-      if (this.busy || !this.dragStart) {
-        this.dragStart = null;
-        return;
-      }
-      const p = k.mousePos();
-      const dx = p.x - this.dragStart.px;
-      const dy = p.y - this.dragStart.py;
-      const threshold = this.layout.cell * 0.4;
-      if (Math.hypot(dx, dy) >= threshold) {
-        // swipe: pick dominant direction
-        const from = this.dragStart.pos;
-        const to =
-          Math.abs(dx) > Math.abs(dy)
-            ? { row: from.row, col: from.col + (dx > 0 ? 1 : -1) }
-            : { row: from.row + (dy > 0 ? 1 : -1), col: from.col };
-        this.selected = null;
-        if (this.inBounds(to)) void this.requestSwap(from, to);
-      }
-      this.dragStart = null;
+      const intent = this.gestures.onRelease(k.mousePos(), this.layout.cell, this.inputContext());
+      this.dispatch(intent);
     });
   }
 
-  /** Whether the cell currently holds a Special (drives tap-to-fire). */
-  private specialAt(p: Pos): boolean {
-    return this.game.board.grid[p.row]?.[p.col]?.special != null;
+  /** Carry out the action a gesture resolved to. */
+  private dispatch(intent: Intent | null) {
+    if (!intent) return;
+    switch (intent.kind) {
+      case "swap":
+        void this.requestSwap(intent.a, intent.b);
+        break;
+      case "activate":
+        void this.requestActivate(intent.at);
+        break;
+      case "music":
+        playSound("swap");
+        this.music.cycle();
+        break;
+      case "help":
+        playSound("swap");
+        this.mode = "tutorial";
+        break;
+      case "dismissTutorial":
+        playSound("swap");
+        this.mode = "play";
+        break;
+      case "replay":
+        playSound("swap");
+        this.startGame();
+        break;
+    }
   }
 
   private async requestSwap(a: Pos, b: Pos) {
@@ -287,7 +265,7 @@ export class GameView {
     });
 
     // board region: panel, cell backgrounds, selection + hint glow, candies.
-    this.player.drawBoard(this.selected, this.hint);
+    this.player.drawBoard(this.gestures.selected, this.hint);
 
     this.hud.draw(this.layout, this.game.movesLeft, this.game.objective, this.music.label);
 
@@ -317,6 +295,3 @@ const popEase = (t: number) => {
   const c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 };
-const adjacent = (a: Pos, b: Pos) =>
-  Math.abs(a.row - b.row) + Math.abs(a.col - b.col) === 1;
-const samePos = (a: Pos, b: Pos) => a.row === b.row && a.col === b.col;

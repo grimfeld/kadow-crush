@@ -1,0 +1,112 @@
+{
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\board.ts": {
+    "mtime": 1780928309.0554664,
+    "ast_hash": "1c1e189fc95498209006b7902b744451",
+    "semantic_hash": "1c1e189fc95498209006b7902b744451"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\config.ts": {
+    "mtime": 1780919632.640344,
+    "ast_hash": "cfd341c3f14c5bd6be689f8a18a6e0dc",
+    "semantic_hash": "cfd341c3f14c5bd6be689f8a18a6e0dc"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\game.ts": {
+    "mtime": 1780928328.7226267,
+    "ast_hash": "783279509e6a435c03f74248fe1972a7",
+    "semantic_hash": "783279509e6a435c03f74248fe1972a7"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\grid.ts": {
+    "mtime": 1780926632.5267916,
+    "ast_hash": "582e93f6e9659f4da622854483a9193b",
+    "semantic_hash": "582e93f6e9659f4da622854483a9193b"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\match.ts": {
+    "mtime": 1780927480.1250205,
+    "ast_hash": "7bbf21d210b8c78dc87043d45d0916bb",
+    "semantic_hash": "7bbf21d210b8c78dc87043d45d0916bb"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\rng.ts": {
+    "mtime": 1780438935.1116986,
+    "ast_hash": "c3223542bff6cd0e6771040a9644c3c3",
+    "semantic_hash": "c3223542bff6cd0e6771040a9644c3c3"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\special.ts": {
+    "mtime": 1780927474.761914,
+    "ast_hash": "fa4d5e55bc917b973693671f508887ba",
+    "semantic_hash": "fa4d5e55bc917b973693671f508887ba"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\core\\types.ts": {
+    "mtime": 1780928231.483853,
+    "ast_hash": "23745fb13597758066bebf5f989d16af",
+    "semantic_hash": "23745fb13597758066bebf5f989d16af"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\main.ts": {
+    "mtime": 1780912034.4760828,
+    "ast_hash": "acfe38990515016e5413088ebf365986",
+    "semantic_hash": "acfe38990515016e5413088ebf365986"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\effects.ts": {
+    "mtime": 1780491138.1379564,
+    "ast_hash": "d660b89b9ff5511d1883785c85e3ea70",
+    "semantic_hash": "d660b89b9ff5511d1883785c85e3ea70"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\endSequence.ts": {
+    "mtime": 1780917719.4171004,
+    "ast_hash": "0e98936b7a9e903293fb0431c0750493",
+    "semantic_hash": "0e98936b7a9e903293fb0431c0750493"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\gameView.ts": {
+    "mtime": 1780919560.3806024,
+    "ast_hash": "701191b90f096bf24a51a667134cd587",
+    "semantic_hash": "701191b90f096bf24a51a667134cd587"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\hud.ts": {
+    "mtime": 1780917556.5053985,
+    "ast_hash": "107b343239dbbef9bbccf6858c7e107b",
+    "semantic_hash": "107b343239dbbef9bbccf6858c7e107b"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\layout.ts": {
+    "mtime": 1780438935.1153078,
+    "ast_hash": "bbd991145936b92e72bebc622fbd690b",
+    "semantic_hash": "bbd991145936b92e72bebc622fbd690b"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\music.ts": {
+    "mtime": 1780438935.115827,
+    "ast_hash": "d66030ee51a625e4300d3acd7bfbf6f5",
+    "semantic_hash": "d66030ee51a625e4300d3acd7bfbf6f5"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\particles.ts": {
+    "mtime": 1780438935.1168628,
+    "ast_hash": "ac7453e73bfae12b70f27d092470b1f4",
+    "semantic_hash": "ac7453e73bfae12b70f27d092470b1f4"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\render.ts": {
+    "mtime": 1780927560.7163787,
+    "ast_hash": "368cc5dd09372d6bbf5564bf9b5e261d",
+    "semantic_hash": "368cc5dd09372d6bbf5564bf9b5e261d"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\resolutionPlayer.ts": {
+    "mtime": 1780927532.633682,
+    "ast_hash": "cb85aa96647b3da361d562ed584256dd",
+    "semantic_hash": "cb85aa96647b3da361d562ed584256dd"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\sound.ts": {
+    "mtime": 1780438935.1184156,
+    "ast_hash": "f5d05acf686d138e86c6861e815c5006",
+    "semantic_hash": "f5d05acf686d138e86c6861e815c5006"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\text.ts": {
+    "mtime": 1780438935.1189313,
+    "ast_hash": "52f7b05f1179e369d15999825bfd0044",
+    "semantic_hash": "52f7b05f1179e369d15999825bfd0044"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\theme.ts": {
+    "mtime": 1780927518.3575196,
+    "ast_hash": "93e5d207b59fd6f5b673dcd35c75cf45",
+    "semantic_hash": "93e5d207b59fd6f5b673dcd35c75cf45"
+  },
+  "F:\\WORKPLACE\\SOFTWARE\\kadow-crush\\src\\view\\tutorial.ts": {
+    "mtime": 1780911963.752423,
+    "ast_hash": "5a57cd8e8fe931f7709d42b040034d20",
+    "semantic_hash": "5a57cd8e8fe931f7709d42b040034d20"
+  }
+}
